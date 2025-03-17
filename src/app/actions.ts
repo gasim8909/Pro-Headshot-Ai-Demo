@@ -10,7 +10,7 @@ import { Polar } from "@polar-sh/sdk";
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
-  const fullName = formData.get("full_name")?.toString() || '';
+  const fullName = formData.get("full_name")?.toString() || "";
   const supabase = await createClient();
 
   if (!email || !password) {
@@ -21,19 +21,21 @@ export const signUpAction = async (formData: FormData) => {
     );
   }
 
-  const { data: { user }, error } = await supabase.auth.signUp({
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
         full_name: fullName,
         email: email,
-      }
+      },
     },
   });
 
   console.log("After signUp", error);
-
 
   if (error) {
     console.error(error.code + " " + error.message);
@@ -42,23 +44,21 @@ export const signUpAction = async (formData: FormData) => {
 
   if (user) {
     try {
-      const { error: updateError } = await supabase
-        .from('users')
-        .insert({
-          id: user.id,
-          name: fullName,
-          full_name: fullName,
-          email: email,
-          user_id: user.id,
-          token_identifier: user.id,
-          created_at: new Date().toISOString()
-        });
+      const { error: updateError } = await supabase.from("users").insert({
+        id: user.id,
+        name: fullName,
+        full_name: fullName,
+        email: email,
+        user_id: user.id,
+        token_identifier: user.id,
+        created_at: new Date().toISOString(),
+      });
 
       if (updateError) {
-        console.error('Error updating user profile:', updateError);
+        console.error("Error updating user profile:", updateError);
       }
     } catch (err) {
-      console.error('Error in user profile creation:', err);
+      console.error("Error in user profile creation:", err);
     }
   }
 
@@ -179,40 +179,45 @@ export const checkoutSessionAction = async ({
   });
 
   return result;
-}
+};
 
 export const checkUserSubscription = async (userId: string) => {
   const supabase = await createClient();
 
-  const { data: subscription, error } = await supabase
-    .from('subscriptions')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single();
+  const { data: subscriptions, error } = await supabase
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active");
 
   if (error) {
-    console.error('Error checking subscription status:', error);
+    console.error("Error checking subscription status:", error);
     return false;
   }
 
-  return !!subscription;
+  return subscriptions && subscriptions.length > 0;
 };
 
 export const manageSubscriptionAction = async (userId: string) => {
   const supabase = await createClient();
 
-  const { data: subscription, error } = await supabase
-    .from('subscriptions')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single();
+  const { data: subscriptions, error } = await supabase
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active");
 
   if (error) {
-    console.error('Error checking subscription status:', error);
+    console.error("Error checking subscription status:", error);
     return false;
   }
+
+  if (!subscriptions || subscriptions.length === 0) {
+    console.log("No active subscription found for user", userId);
+    return false;
+  }
+
+  const subscription = subscriptions[0];
 
   const polar = new Polar({
     server: "sandbox",
@@ -227,7 +232,7 @@ export const manageSubscriptionAction = async (userId: string) => {
     // Only return the URL to avoid Convex type issues
     return { url: result.customerPortalUrl };
   } catch (error) {
-    console.error('Error managing subscription:', error);
-    return { error: 'Error managing subscription' };
+    console.error("Error managing subscription:", error);
+    return { error: "Error managing subscription" };
   }
 };

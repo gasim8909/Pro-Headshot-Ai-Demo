@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
+import { GradientButton } from "./ui/gradient-button";
 import { Card, CardContent } from "./ui/card";
-import { Download, Share2 } from "lucide-react";
+import { Download, Share2, Heart } from "lucide-react";
+import { Shimmer } from "./ui/shimmer";
 
 type HeadshotProps = {
   images: string[];
@@ -77,12 +79,23 @@ export default function HeadshotGallery({ images = [] }: HeadshotProps) {
       <div className="flex flex-col md:flex-row gap-6">
         {/* Main image display */}
         <div className="md:w-3/4">
-          <div className="rounded-lg overflow-hidden border border-gray-200 bg-white shadow-md">
-            <img
-              src={currentImage}
-              alt="AI Generated Headshot"
-              className="w-full h-auto object-cover aspect-[3/4]"
-            />
+          <div className="rounded-lg overflow-hidden border border-gray-200 bg-white shadow-md hover:shadow-lg transition-shadow">
+            <div className="relative group">
+              <img
+                src={currentImage}
+                alt="AI Generated Headshot"
+                className="w-full h-auto object-cover aspect-[3/4]"
+              />
+              <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="rounded-full bg-white/80 backdrop-blur-sm hover:bg-white/90"
+                >
+                  <Heart className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            </div>
           </div>
           <div className="mt-4 flex justify-between">
             <Button
@@ -93,13 +106,13 @@ export default function HeadshotGallery({ images = [] }: HeadshotProps) {
               <Share2 className="h-4 w-4" />
               Share
             </Button>
-            <Button
+            <GradientButton
               onClick={handleDownload}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex items-center gap-2"
+              className="flex items-center gap-2"
             >
               <Download className="h-4 w-4" />
               Download
-            </Button>
+            </GradientButton>
           </div>
         </div>
 
@@ -109,15 +122,26 @@ export default function HeadshotGallery({ images = [] }: HeadshotProps) {
             {displayImages.map((image, index) => (
               <Card
                 key={index}
-                className={`cursor-pointer overflow-hidden transition-all ${image === selectedImage ? "ring-2 ring-blue-600" : "hover:opacity-90"}`}
+                className={`cursor-pointer overflow-hidden transition-all ${image === selectedImage ? "ring-2 ring-blue-600 shadow-md" : "hover:opacity-95 hover:shadow-md"}`}
                 onClick={() => setSelectedImage(image)}
               >
                 <CardContent className="p-0">
-                  <img
-                    src={image}
-                    alt={`AI Headshot ${index + 1}`}
-                    className="w-full h-auto aspect-square object-cover"
-                  />
+                  <Shimmer
+                    className={`${image === selectedImage ? "" : "hidden"}`}
+                  >
+                    <img
+                      src={image}
+                      alt={`AI Headshot ${index + 1}`}
+                      className="w-full h-auto aspect-square object-cover"
+                    />
+                  </Shimmer>
+                  <div className={`${image === selectedImage ? "hidden" : ""}`}>
+                    <img
+                      src={image}
+                      alt={`AI Headshot ${index + 1}`}
+                      className="w-full h-auto aspect-square object-cover"
+                    />
+                  </div>
                 </CardContent>
               </Card>
             ))}

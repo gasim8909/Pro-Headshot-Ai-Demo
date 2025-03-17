@@ -79,8 +79,13 @@ export async function POST(request: NextRequest) {
             : "NOT SET",
         );
 
-        // Process images with Gemini API
-        const processedImages = await processImages(imageData, prompt, style);
+        // Process images with Gemini API - always generate at least 4 images
+        const processedImages = await processImages(
+          imageData,
+          prompt,
+          style,
+          4,
+        );
 
         // Verify we got valid images back
         if (!processedImages || processedImages.length === 0) {
@@ -147,6 +152,14 @@ export async function POST(request: NextRequest) {
         return url;
       });
 
+      // Always ensure we have exactly 4 images in mock data
+      while (processedImages.length < 4 && processedImages.length > 0) {
+        // Duplicate existing images if we have fewer than 4
+        processedImages.push(
+          processedImages[processedImages.length % processedImages.length],
+        );
+      }
+
       generatedImages = {
         images: processedImages,
         source: "mock-data",
@@ -184,19 +197,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Ensure we're not returning null or undefined
-    return NextResponse.json(
-      generatedImages || {
-        images: [
-          "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=80",
-          "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=80",
-          "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&q=80",
-          "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800&q=80",
-        ],
-        source: "fallback-data",
-        message: "Using fallback images",
-      },
-    );
+    // Ensure we're not returning null or undefined and always have exactly 4 images
+    const finalResponse = generatedImages || {
+      images: [
+        "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=80",
+        "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=80",
+        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&q=80",
+        "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800&q=80",
+      ],
+      source: "fallback-data",
+      message: "Using fallback images",
+    };
+
+    // Ensure we always have exactly 4 images
+    if (finalResponse.images.length > 4) {
+      finalResponse.images = finalResponse.images.slice(0, 4);
+    } else if (
+      finalResponse.images.length < 4 &&
+      finalResponse.images.length > 0
+    ) {
+      // If we have fewer than 4 images, duplicate existing ones to reach 4
+      while (finalResponse.images.length < 4) {
+        finalResponse.images.push(
+          finalResponse.images[
+            finalResponse.images.length % finalResponse.images.length
+          ],
+        );
+      }
+    }
+
+    return NextResponse.json(finalResponse);
   } catch (error) {
     console.error("Error processing request:", error);
     // Determine the type of error for better error messages
@@ -234,7 +264,7 @@ export async function POST(request: NextRequest) {
 
     console.error(`Error [${errorCode}]: ${errorMessage}`);
 
-    // Return fallback images with detailed error information
+    // Return exactly 4 fallback images with detailed error information
     return NextResponse.json(
       {
         error: errorCode,

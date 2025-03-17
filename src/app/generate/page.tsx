@@ -16,7 +16,7 @@ export default async function GeneratePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
       <DashboardNavbar />
-      <div className="container mx-auto px-4 py-12">
+      <div className="container mx-auto px-4 py-12 pt-24">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-center sm:text-left">
             Generate AI Headshots

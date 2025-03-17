@@ -11,7 +11,8 @@ import {
   CardTitle,
 } from "./ui/card";
 import { User } from "@supabase/supabase-js";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 export default function PricingCard({
   item,
@@ -20,9 +21,15 @@ export default function PricingCard({
   item: any;
   user: User | null;
 }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   // Handle checkout process
   const handleCheckout = async (priceId: string) => {
+    setIsLoading(true);
+    setError(null);
     console.log("priceId", priceId);
+
     if (!user) {
       // Redirect to login if user is not authenticated
       window.location.href = "/sign-in?redirect=pricing";
@@ -31,6 +38,7 @@ export default function PricingCard({
 
     try {
       const supabase = createClient();
+      console.log("Invoking create-checkout function...");
       const { data, error } = await supabase.functions.invoke(
         "supabase-functions-create-checkout",
         {
@@ -49,17 +57,23 @@ export default function PricingCard({
       );
 
       if (error) {
+        console.error("Error from function:", error);
         throw error;
       }
 
-      // Redirect to Stripe checkout
+      console.log("Checkout response:", data);
+
+      // Redirect to Polar checkout
       if (data?.url) {
+        console.log("Redirecting to checkout URL:", data.url);
         window.location.href = data.url;
       } else {
         throw new Error("No checkout URL returned");
       }
     } catch (error) {
       console.error("Error creating checkout session:", error);
+      setError(error.message || "Failed to create checkout session");
+      setIsLoading(false);
     }
   };
 
@@ -96,6 +110,11 @@ export default function PricingCard({
               </li>
             ))}
           </ul>
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+              {error}
+            </div>
+          )}
         </CardContent>
       )}
       <CardFooter className="relative">
@@ -103,13 +122,21 @@ export default function PricingCard({
           onClick={async () => {
             await handleCheckout(item?.prices?.[0]?.id);
           }}
+          disabled={isLoading}
           className={`w-full py-6 text-lg font-medium ${
             item.popular
               ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
               : "bg-gray-100 hover:bg-gray-200 text-gray-900"
           }`}
         >
-          Get Started
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Processing...
+            </>
+          ) : (
+            "Get Started"
+          )}
         </Button>
       </CardFooter>
     </Card>

@@ -17,7 +17,13 @@ type GeminiStatus = {
   demoMode?: boolean;
 };
 
-export default function GeminiStatusIndicator() {
+interface GeminiStatusIndicatorProps {
+  showForUsers?: boolean;
+}
+
+export default function GeminiStatusIndicator({
+  showForUsers = false,
+}: GeminiStatusIndicatorProps) {
   const [status, setStatus] = useState<GeminiStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -79,7 +85,15 @@ export default function GeminiStatusIndicator() {
     return () => clearInterval(interval);
   }, []);
 
+  // Don't render anything for regular users if not in demo mode
+  if (!showForUsers && status?.available && !status?.demoMode) {
+    return null;
+  }
+
   if (loading) {
+    // Only show loading state on admin/debug pages
+    if (!showForUsers) return null;
+
     return (
       <Badge variant="outline" className="animate-pulse">
         Checking Gemini API...
@@ -119,6 +133,9 @@ export default function GeminiStatusIndicator() {
       </TooltipProvider>
     );
   }
+
+  // Only show "Gemini API Active" on admin/debug pages
+  if (!showForUsers) return null;
 
   return (
     <TooltipProvider>

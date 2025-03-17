@@ -89,6 +89,33 @@ export type Database = {
           },
         ]
       }
+      user_headshots: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          image_url: string
+          style: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url: string
+          style?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string
+          style?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           avatar_url: string | null

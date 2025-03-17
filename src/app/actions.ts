@@ -44,7 +44,10 @@ export const signUpAction = async (formData: FormData) => {
 
   if (user) {
     try {
-      const { error: updateError } = await supabase.from("users").insert({
+      // Use service role client to bypass RLS policies for initial user creation
+      const adminClient = await createClient();
+
+      const { error: updateError } = await adminClient.from("users").insert({
         id: user.id,
         name: fullName,
         full_name: fullName,
@@ -52,13 +55,17 @@ export const signUpAction = async (formData: FormData) => {
         user_id: user.id,
         token_identifier: user.id,
         created_at: new Date().toISOString(),
+        subscription: null, // Initialize subscription as null
       });
 
       if (updateError) {
         console.error("Error updating user profile:", updateError);
+        // Continue with sign-up process even if profile update fails
+        // The user can update their profile later
       }
     } catch (err) {
       console.error("Error in user profile creation:", err);
+      // Continue with sign-up process even if profile creation fails
     }
   }
 

@@ -6,7 +6,7 @@ import { useEffect } from "react";
 
 export function TempoInit() {
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_TEMPO) {
+    if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_TEMPO) {
       TempoDevtools.init();
     }
   }, []);

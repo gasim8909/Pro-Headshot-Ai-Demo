@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSubscription } from "./subscription-context";
 import { Button } from "./ui/button";
 import { GradientButton } from "./ui/gradient-button";
 import { Input } from "./ui/input";
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
+import SaveToHistoryButton from "./save-to-history-button";
 import { ErrorMessage } from "./error-message";
 import { Shimmer } from "./ui/shimmer";
 
@@ -42,9 +44,14 @@ export default function UploadForm({ user }: { user?: User | null }) {
     severity: "error" | "warning" | "info";
   } | null>(null);
 
+  // Get subscription data
+  const { isSubscribed, tier, maxUploads, maxGenerations, hasAdvancedStyles } =
+    useSubscription();
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files).slice(0, 5); // Limit to 5 files
+      // Limit files based on subscription tier
+      const selectedFiles = Array.from(e.target.files).slice(0, maxUploads);
       setFiles(selectedFiles);
 
       // Create previews
@@ -53,12 +60,11 @@ export default function UploadForm({ user }: { user?: User | null }) {
       );
       setPreviews(newPreviews);
 
-      // Show warning if more than 5 files were selected
-      if (e.target.files.length > 5) {
+      // Show warning if more files were selected than allowed by subscription
+      if (e.target.files.length > maxUploads) {
         setError({
           title: "Too many files",
-          message:
-            "Maximum 5 photos allowed. Only the first 5 have been selected.",
+          message: `Maximum ${maxUploads} photos allowed for ${tier} tier. Only the first ${maxUploads} have been selected.`,
           severity: "warning",
         });
       } else {
@@ -388,23 +394,32 @@ export default function UploadForm({ user }: { user?: User | null }) {
                     </span>
                   </div>
                 </div>
-                <div className="p-4 bg-white flex justify-between items-center">
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">
-                      Headshot {index + 1}
-                    </span>
+                <div className="p-4 bg-white flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">
+                        Headshot {index + 1}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="group-hover:bg-gradient-to-r group-hover:from-blue-500 group-hover:to-purple-500 group-hover:text-white group-hover:border-transparent transition-all"
+                      asChild
+                    >
+                      <a href={image} download={`ai-headshot-${index + 1}.jpg`}>
+                        <Download className="mr-1 h-3 w-3" />
+                        Download
+                      </a>
+                    </Button>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="group-hover:bg-gradient-to-r group-hover:from-blue-500 group-hover:to-purple-500 group-hover:text-white group-hover:border-transparent transition-all"
-                    asChild
-                  >
-                    <a href={image} download={`ai-headshot-${index + 1}.jpg`}>
-                      <Download className="mr-1 h-3 w-3" />
-                      Download
-                    </a>
-                  </Button>
+                  {user && (
+                    <SaveToHistoryButton
+                      image={image}
+                      style={style}
+                      description={prompt || `AI Headshot ${index + 1}`}
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -540,25 +555,35 @@ export default function UploadForm({ user }: { user?: User | null }) {
                   name: "Professional",
                   description: "Corporate, LinkedIn-ready",
                   icon: <Sparkles className="h-5 w-5" />,
+                  premium: false,
                 },
                 {
                   id: "creative",
                   name: "Creative",
                   description: "Artistic, expressive",
                   icon: <Camera className="h-5 w-5" />,
+                  premium: tier === "free",
                 },
                 {
                   id: "casual",
                   name: "Casual",
                   description: "Relaxed, approachable",
                   icon: <ImageIcon className="h-5 w-5" />,
+                  premium: tier === "free",
                 },
               ].map((styleOption) => (
                 <div
                   key={styleOption.id}
-                  className={`border rounded-lg p-5 cursor-pointer transition-all ${style === styleOption.id ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"}`}
-                  onClick={() => setStyle(styleOption.id)}
+                  className={`border rounded-lg p-5 transition-all ${styleOption.premium ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${style === styleOption.id ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"}`}
+                  onClick={() =>
+                    !styleOption.premium && setStyle(styleOption.id)
+                  }
                 >
+                  {styleOption.premium && (
+                    <div className="absolute top-2 right-2 bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
+                      Premium
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 mb-1">
                     <div
                       className={`text-${style === styleOption.id ? "blue" : "gray"}-500`}

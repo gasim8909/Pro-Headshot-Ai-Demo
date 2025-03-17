@@ -1,8 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { validateEvent } from 'npm:@polar-sh/sdk/webhooks';
-
+import { validateEvent } from "npm:@polar-sh/sdk/webhooks";
 
 // Types
 type WebhookEvent = {
@@ -36,41 +35,35 @@ type SubscriptionData = {
 };
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 // Verify Polar webhook signature
 async function verifyPolarSignature(
   request: Request,
-  body: string
+  body: string,
 ): Promise<boolean> {
   try {
     // Internally validateEvent uses headers as a dictionary e.g. headers["webhook-id"]
-    // So we need to convert the headers to a dictionary 
+    // So we need to convert the headers to a dictionary
     // (request.headers is a Headers object which is accessed as request.headers.get("webhook-id"))
     const headers: Record<string, string> = {};
     request.headers.forEach((value, key) => {
       headers[key] = value;
     });
 
-    validateEvent(
-      body,
-      headers,
-      Deno.env.get('POLAR_WEBHOOK_SECRET'),
-    )
+    validateEvent(body, headers, Deno.env.get("POLAR_WEBHOOK_SECRET"));
     return true;
   } catch (error) {
-    console.error('Error verifying webhook signature:', error);
+    console.error("Error verifying webhook signature:", error);
     return false;
   }
 }
 
 // Utility functions
-async function storeWebhookEvent(
-  supabaseClient: any,
-  body: any
-): Promise<any> {
+async function storeWebhookEvent(supabaseClient: any, body: any): Promise<any> {
   try {
     const { data, error } = await supabaseClient
       .from("webhook_events")
@@ -80,25 +73,25 @@ async function storeWebhookEvent(
         polar_event_id: body.data.id,
         created_at: new Date().toISOString(),
         modified_at: new Date().toISOString(),
-        data: body.data
+        data: body.data,
       } as WebhookEvent)
       .select();
 
     if (error) {
-      console.error('Error storing webhook event:', error);
+      console.error("Error storing webhook event:", error);
       throw error;
     }
 
     return data;
   } catch (error) {
-    console.error('Error in storeWebhookEvent:', error);
+    console.error("Error in storeWebhookEvent:", error);
     throw error;
   }
 }
 
 // Event handlers
 async function handleSubscriptionCreated(supabaseClient: any, body: any) {
-  console.log('Handling subscription created:', body.data.id);
+  console.log("Handling subscription created:", body.data.id);
 
   try {
     const { data, error } = await supabaseClient
@@ -110,7 +103,9 @@ async function handleSubscriptionCreated(supabaseClient: any, body: any) {
         interval: body.data.recurring_interval,
         user_id: body.data.metadata.user_id,
         status: body.data.status,
-        current_period_start: new Date(body.data.current_period_start).getTime(),
+        current_period_start: new Date(
+          body.data.current_period_start,
+        ).getTime(),
         current_period_end: new Date(body.data.current_period_end).getTime(),
         cancel_at_period_end: body.data.cancel_at_period_end,
         amount: body.data.amount,
@@ -121,40 +116,56 @@ async function handleSubscriptionCreated(supabaseClient: any, body: any) {
         canceled_at: body.data.canceled_at
           ? new Date(body.data.canceled_at).getTime()
           : null,
-        customer_cancellation_reason: body.data.customer_cancellation_reason || null,
-        customer_cancellation_comment: body.data.customer_cancellation_comment || null,
+        customer_cancellation_reason:
+          body.data.customer_cancellation_reason || null,
+        customer_cancellation_comment:
+          body.data.customer_cancellation_comment || null,
         metadata: body.data.metadata || {},
         custom_field_data: body.data.custom_field_data || {},
-        customer_id: body.data.customer_id
+        customer_id: body.data.customer_id,
       })
       .select();
 
     if (error) {
-      console.error('Error inserting subscription:', error);
+      console.error("Error inserting subscription:", error);
       throw error;
+    }
+
+    // Also update the user's subscription field directly
+    if (body.data.status === "active" && body.data.metadata.user_id) {
+      const { error: userUpdateError } = await supabaseClient
+        .from("users")
+        .update({
+          subscription: body.data.id,
+        })
+        .eq("user_id", body.data.metadata.user_id);
+
+      if (userUpdateError) {
+        console.error("Error updating user subscription:", userUpdateError);
+      }
     }
 
     return new Response(
       JSON.stringify({ message: "Subscription created successfully" }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
-    console.error('Error creating subscription:', error);
+    console.error("Error creating subscription:", error);
     return new Response(
       JSON.stringify({ error: "Failed to create subscription" }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 }
 
 async function handleSubscriptionUpdated(supabaseClient: any, body: any) {
-  console.log('Handling subscription updated:', body.data.id);
+  console.log("Handling subscription updated:", body.data.id);
 
   try {
     const { data: existingSub } = await supabaseClient
@@ -169,41 +180,60 @@ async function handleSubscriptionUpdated(supabaseClient: any, body: any) {
         .update({
           amount: body.data.amount,
           status: body.data.status,
-          current_period_start: new Date(body.data.current_period_start).getTime(),
+          current_period_start: new Date(
+            body.data.current_period_start,
+          ).getTime(),
           current_period_end: new Date(body.data.current_period_end).getTime(),
           cancel_at_period_end: body.data.cancel_at_period_end,
           metadata: body.data.metadata || {},
-          custom_field_data: body.data.custom_field_data || {}
+          custom_field_data: body.data.custom_field_data || {},
         })
         .eq("polar_id", body.data.id);
 
       if (error) {
-        console.error('Error updating subscription:', error);
+        console.error("Error updating subscription:", error);
         throw error;
+      }
+
+      // Update user subscription field based on status
+      if (body.data.metadata && body.data.metadata.user_id) {
+        const { error: userUpdateError } = await supabaseClient
+          .from("users")
+          .update({
+            subscription: body.data.status === "active" ? body.data.id : null,
+          })
+          .eq("user_id", body.data.metadata.user_id);
+
+        if (userUpdateError) {
+          console.error(
+            "Error updating user subscription status:",
+            userUpdateError,
+          );
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ message: "Subscription updated successfully" }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
-    console.error('Error updating subscription:', error);
+    console.error("Error updating subscription:", error);
     return new Response(
       JSON.stringify({ error: "Failed to update subscription" }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 }
 
 async function handleSubscriptionActive(supabaseClient: any, body: any) {
-  console.log('Handling subscription active:', body.data.id);
+  console.log("Handling subscription active:", body.data.id);
 
   try {
     const { data: activeSub } = await supabaseClient
@@ -217,37 +247,54 @@ async function handleSubscriptionActive(supabaseClient: any, body: any) {
         .from("subscriptions")
         .update({
           status: body.data.status,
-          started_at: new Date(body.data.started_at).getTime()
+          started_at: new Date(body.data.started_at).getTime(),
         })
         .eq("polar_id", body.data.id);
 
       if (error) {
-        console.error('Error activating subscription:', error);
+        console.error("Error activating subscription:", error);
         throw error;
+      }
+
+      // Update user subscription field
+      if (activeSub.user_id) {
+        const { error: userUpdateError } = await supabaseClient
+          .from("users")
+          .update({
+            subscription: body.data.id,
+          })
+          .eq("user_id", activeSub.user_id);
+
+        if (userUpdateError) {
+          console.error(
+            "Error updating user subscription on activation:",
+            userUpdateError,
+          );
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ message: "Subscription activated successfully" }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
-    console.error('Error activating subscription:', error);
+    console.error("Error activating subscription:", error);
     return new Response(
       JSON.stringify({ error: "Failed to activate subscription" }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 }
 
 async function handleSubscriptionCanceled(supabaseClient: any, body: any) {
-  console.log('Handling subscription canceled:', body.data.id);
+  console.log("Handling subscription canceled:", body.data.id);
 
   try {
     const { data: canceledSub } = await supabaseClient
@@ -264,38 +311,57 @@ async function handleSubscriptionCanceled(supabaseClient: any, body: any) {
           canceled_at: body.data.canceled_at
             ? new Date(body.data.canceled_at).getTime()
             : null,
-          customer_cancellation_reason: body.data.customer_cancellation_reason || null,
-          customer_cancellation_comment: body.data.customer_cancellation_comment || null
+          customer_cancellation_reason:
+            body.data.customer_cancellation_reason || null,
+          customer_cancellation_comment:
+            body.data.customer_cancellation_comment || null,
         })
         .eq("polar_id", body.data.id);
 
       if (error) {
-        console.error('Error canceling subscription:', error);
+        console.error("Error canceling subscription:", error);
         throw error;
+      }
+
+      // Clear user subscription field
+      if (canceledSub.user_id) {
+        const { error: userUpdateError } = await supabaseClient
+          .from("users")
+          .update({
+            subscription: null,
+          })
+          .eq("user_id", canceledSub.user_id);
+
+        if (userUpdateError) {
+          console.error(
+            "Error clearing user subscription on cancellation:",
+            userUpdateError,
+          );
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ message: "Subscription canceled successfully" }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
-    console.error('Error canceling subscription:', error);
+    console.error("Error canceling subscription:", error);
     return new Response(
       JSON.stringify({ error: "Failed to cancel subscription" }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 }
 
 async function handleSubscriptionUncanceled(supabaseClient: any, body: any) {
-  console.log('Handling subscription uncanceled:', body.data.id);
+  console.log("Handling subscription uncanceled:", body.data.id);
 
   try {
     const { data: uncanceledSub } = await supabaseClient
@@ -312,37 +378,54 @@ async function handleSubscriptionUncanceled(supabaseClient: any, body: any) {
           cancel_at_period_end: false,
           canceled_at: null,
           customer_cancellation_reason: null,
-          customer_cancellation_comment: null
+          customer_cancellation_comment: null,
         })
         .eq("polar_id", body.data.id);
 
       if (error) {
-        console.error('Error uncanceling subscription:', error);
+        console.error("Error uncanceling subscription:", error);
         throw error;
+      }
+
+      // Restore user subscription field if status is active
+      if (uncanceledSub.user_id && body.data.status === "active") {
+        const { error: userUpdateError } = await supabaseClient
+          .from("users")
+          .update({
+            subscription: body.data.id,
+          })
+          .eq("user_id", uncanceledSub.user_id);
+
+        if (userUpdateError) {
+          console.error(
+            "Error restoring user subscription on uncancellation:",
+            userUpdateError,
+          );
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ message: "Subscription uncanceled successfully" }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
-    console.error('Error uncanceling subscription:', error);
+    console.error("Error uncanceling subscription:", error);
     return new Response(
       JSON.stringify({ error: "Failed to uncancel subscription" }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 }
 
 async function handleSubscriptionRevoked(supabaseClient: any, body: any) {
-  console.log('Handling subscription revoked:', body.data.id);
+  console.log("Handling subscription revoked:", body.data.id);
 
   try {
     const { data: revokedSub } = await supabaseClient
@@ -355,53 +438,70 @@ async function handleSubscriptionRevoked(supabaseClient: any, body: any) {
       const { error } = await supabaseClient
         .from("subscriptions")
         .update({
-          status: 'revoked',
+          status: "revoked",
           ended_at: body.data.ended_at
             ? new Date(body.data.ended_at).getTime()
-            : null
+            : null,
         })
         .eq("polar_id", body.data.id);
 
       if (error) {
-        console.error('Error revoking subscription:', error);
+        console.error("Error revoking subscription:", error);
         throw error;
+      }
+
+      // Clear user subscription field
+      if (revokedSub.user_id) {
+        const { error: userUpdateError } = await supabaseClient
+          .from("users")
+          .update({
+            subscription: null,
+          })
+          .eq("user_id", revokedSub.user_id);
+
+        if (userUpdateError) {
+          console.error(
+            "Error clearing user subscription on revocation:",
+            userUpdateError,
+          );
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ message: "Subscription revoked successfully" }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
-    console.error('Error revoking subscription:', error);
+    console.error("Error revoking subscription:", error);
     return new Response(
       JSON.stringify({ error: "Failed to revoke subscription" }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 }
 
 async function handleOrderCreated(supabaseClient: any, body: any) {
-  console.log('Handling order created:', body.data.id);
+  console.log("Handling order created:", body.data.id);
   // Orders are handled through the subscription events
   return new Response(
     JSON.stringify({ message: "Order created event received" }),
-    { 
+    {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    }
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
   );
 }
 
 // Main webhook handler
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -412,25 +512,25 @@ serve(async (req) => {
     const clonedReq = req.clone();
     const rawBody = await clonedReq.text();
     const isValidSignature = await verifyPolarSignature(req, rawBody);
-    
+
     if (!isValidSignature) {
       return new Response(
-        JSON.stringify({ error: 'Invalid webhook signature' }),
-        { 
+        JSON.stringify({ error: "Invalid webhook signature" }),
+        {
           status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
-    
+
     // Parse the body as JSON
     const body = JSON.parse(rawBody);
-    console.log('Processing webhook event:', body.type);
+    console.log("Processing webhook event:", body.type);
 
     // Create Supabase client
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
     // Store the webhook event
@@ -439,58 +539,53 @@ serve(async (req) => {
 
     // Handle the event based on type
     switch (body.type) {
-      case 'subscription.created':
+      case "subscription.created":
         return await handleSubscriptionCreated(supabaseClient, body);
-      case 'subscription.updated':
+      case "subscription.updated":
         return await handleSubscriptionUpdated(supabaseClient, body);
-      case 'subscription.active':
+      case "subscription.active":
         return await handleSubscriptionActive(supabaseClient, body);
-      case 'subscription.canceled':
+      case "subscription.canceled":
         return await handleSubscriptionCanceled(supabaseClient, body);
-      case 'subscription.uncanceled':
+      case "subscription.uncanceled":
         return await handleSubscriptionUncanceled(supabaseClient, body);
-      case 'subscription.revoked':
+      case "subscription.revoked":
         return await handleSubscriptionRevoked(supabaseClient, body);
-      case 'order.created':
+      case "order.created":
         return await handleOrderCreated(supabaseClient, body);
       default:
         console.log(`Unhandled event type: ${body.type}`);
         return new Response(
           JSON.stringify({ message: `Unhandled event type: ${body.type}` }),
-          { 
+          {
             status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
         );
     }
   } catch (err) {
-    console.error('Error processing webhook:', err);
-    
+    console.error("Error processing webhook:", err);
+
     // Try to update event status to error if we have an eventId
     if (eventId) {
       try {
         const supabaseClient = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
         );
-        
+
         await supabaseClient
           .from("webhook_events")
           .update({ error: err.message })
           .eq("id", eventId);
       } catch (updateErr) {
-        console.error('Error updating webhook event with error:', updateErr);
+        console.error("Error updating webhook event with error:", updateErr);
       }
     }
-    
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
-
-

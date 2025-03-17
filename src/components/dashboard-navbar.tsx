@@ -33,13 +33,6 @@ export default function DashboardNavbar() {
         </div>
         <div className="hidden md:flex gap-6 items-center">
           <Link
-            href="/dashboard"
-            className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors flex items-center gap-1"
-          >
-            <Home className="h-4 w-4" />
-            Dashboard
-          </Link>
-          <Link
             href="/generate"
             className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors flex items-center gap-1"
           >
@@ -62,6 +55,9 @@ export default function DashboardNavbar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <div className="px-2 py-1.5 flex items-center justify-between">
+                <span className="text-sm font-medium">Account</span>
+              </div>
               <DropdownMenuItem>
                 <Link
                   href="/dashboard"
@@ -69,24 +65,6 @@ export default function DashboardNavbar() {
                 >
                   <Home className="h-4 w-4" />
                   Dashboard
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Link
-                  href="/pricing"
-                  className="flex items-center gap-2 w-full"
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Subscription
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Link
-                  href="/dashboard/reset-password"
-                  className="flex items-center gap-2 w-full"
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem

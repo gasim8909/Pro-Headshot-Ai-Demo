@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "../../../../supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { GEMINI_CONFIG, MOCK_DATA, TIMEOUTS } from "@/lib/config";
 import { processImages } from "@/lib/gemini";
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const supabase = await createClient();
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_ANON_KEY!,
+    );
 
     // Get user information if logged in
     const {
@@ -170,30 +173,80 @@ export async function POST(request: NextRequest) {
 
     // If user is logged in, save the generated images to their account
     if (user && generatedImages && generatedImages.images) {
-      // Save generated images to Supabase storage
-      for (let i = 0; i < generatedImages.images.length; i++) {
-        const imageUrl = generatedImages.images[i];
+      // Check if the headshots bucket exists and create it if it doesn't
+      try {
+        // Create a service role client to bypass RLS for bucket operations
+        const serviceRoleClient = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_KEY!,
+        );
 
-        // Skip saving if it's just a URL (from mock data)
-        if (imageUrl.startsWith("http")) continue;
+        // First, check if the bucket exists by listing buckets
+        const { data: buckets, error: bucketsError } =
+          await serviceRoleClient.storage.listBuckets();
 
-        try {
-          // For base64 data, convert to buffer
-          const buffer = Buffer.from(imageUrl, "base64");
+        let bucketExists = false;
+        if (!bucketsError && buckets) {
+          bucketExists = buckets.some((bucket) => bucket.name === "headshots");
+        }
 
-          const { data, error } = await supabase.storage
-            .from("headshots")
-            .upload(`${user.id}/${Date.now()}_${i}.jpg`, buffer, {
-              contentType: "image/jpeg",
-              upsert: false,
+        // If bucket doesn't exist, try to create it with service role client
+        if (!bucketExists) {
+          console.log("Headshots bucket not found, attempting to create it...");
+          const { error: createError } =
+            await serviceRoleClient.storage.createBucket("headshots", {
+              public: false,
+              fileSizeLimit: 10485760, // 10MB
             });
 
-          if (error) {
-            console.error("Error saving image to storage:", error);
+          if (createError) {
+            console.error("Error creating headshots bucket:", createError);
+            // Continue without saving images
+          } else {
+            console.log("Successfully created headshots bucket");
+            bucketExists = true;
           }
-        } catch (storageError) {
-          console.error("Error processing image for storage:", storageError);
         }
+
+        // Only proceed with saving if the bucket exists or was created
+        if (bucketExists) {
+          // Save generated images to Supabase storage
+          for (let i = 0; i < generatedImages.images.length; i++) {
+            const imageUrl = generatedImages.images[i];
+
+            // Skip saving if it's just a URL (from mock data)
+            if (imageUrl.startsWith("http")) continue;
+
+            try {
+              // For base64 data, convert to buffer
+              const buffer = Buffer.from(
+                imageUrl.replace(/^data:image\/\w+;base64,/, ""),
+                "base64",
+              );
+
+              const { data, error } = await supabase.storage
+                .from("headshots")
+                .upload(`${user.id}/${Date.now()}_${i}.jpg`, buffer, {
+                  contentType: "image/jpeg",
+                  upsert: true, // Changed to true to overwrite existing files
+                });
+
+              if (error) {
+                console.error("Error saving image to storage:", error);
+              } else {
+                console.log(`Successfully saved image ${i} to storage`);
+              }
+            } catch (storageError) {
+              console.error(
+                "Error processing image for storage:",
+                storageError,
+              );
+            }
+          }
+        }
+      } catch (bucketError) {
+        console.error("Error checking/creating storage bucket:", bucketError);
+        // Continue without saving images
       }
     }
 

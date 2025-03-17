@@ -2,21 +2,15 @@ import DashboardNavbar from "@/components/dashboard-navbar";
 import ManageSubscription from "@/components/manage-subscription";
 import { SubscriptionCheck } from "@/components/subscription-check";
 import GeminiStatusIndicator from "@/components/gemini-status-indicator";
-import {
-  InfoIcon,
-  UserCircle,
-  Upload,
-  Image as ImageIcon,
-  History,
-} from "lucide-react";
+import { InfoIcon, UserCircle, CreditCard, History } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient } from "../../../supabase/server";
 import { manageSubscriptionAction } from "../actions";
 import { Suspense } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import UploadForm from "@/components/upload-form";
-import HeadshotGallery from "@/components/headshot-gallery";
+import UserHeadshotHistory from "@/components/user-headshot-history";
 import Footer from "@/components/footer";
+import SubscriptionBadge from "@/components/subscription-badge";
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -33,6 +27,45 @@ export default async function Dashboard() {
 
   if (!result) {
     return redirect("/pricing");
+  }
+
+  // Fetch subscription details
+  const { data: userData } = await supabase
+    .from("users")
+    .select("subscription")
+    .eq("user_id", user.id)
+    .single();
+
+  let subscriptionDetails = null;
+  if (userData?.subscription) {
+    const { data: subData } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("polar_id", userData.subscription)
+      .single();
+
+    subscriptionDetails = subData;
+    console.log("Subscription details from user.subscription:", {
+      polar_id: subscriptionDetails?.polar_id,
+      status: subscriptionDetails?.status,
+      price_id: subscriptionDetails?.polar_price_id,
+    });
+  } else {
+    // Fallback to checking subscriptions table directly
+    const { data: subs } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active");
+
+    if (subs && subs.length > 0) {
+      subscriptionDetails = subs[0];
+      console.log("Subscription details from direct query:", {
+        polar_id: subscriptionDetails?.polar_id,
+        status: subscriptionDetails?.status,
+        price_id: subscriptionDetails?.polar_price_id,
+      });
+    }
   }
 
   return (
@@ -61,18 +94,14 @@ export default async function Dashboard() {
               </span>
             </div>
 
-            <Tabs defaultValue="upload" className="w-full">
+            <Tabs defaultValue="profile" className="w-full">
               <TabsList className="grid w-full max-w-md grid-cols-3">
-                <TabsTrigger value="upload" className="flex items-center gap-2">
-                  <Upload className="h-4 w-4" />
-                  Upload
-                </TabsTrigger>
                 <TabsTrigger
-                  value="gallery"
+                  value="profile"
                   className="flex items-center gap-2"
                 >
-                  <ImageIcon className="h-4 w-4" />
-                  Gallery
+                  <UserCircle className="h-4 w-4" />
+                  Profile
                 </TabsTrigger>
                 <TabsTrigger
                   value="history"
@@ -81,14 +110,83 @@ export default async function Dashboard() {
                   <History className="h-4 w-4" />
                   History
                 </TabsTrigger>
+                <TabsTrigger
+                  value="subscription"
+                  className="flex items-center gap-2"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Subscription
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="upload" className="mt-6">
-                <UploadForm />
-              </TabsContent>
+              <TabsContent value="profile" className="mt-6">
+                <div className="bg-card rounded-xl p-6 border shadow-sm">
+                  <div className="flex items-center gap-4 mb-6">
+                    <UserCircle size={48} className="text-primary" />
+                    <div>
+                      <h2 className="font-semibold text-xl">User Profile</h2>
+                      <p className="text-sm text-muted-foreground">
+                        {user.email}
+                      </p>
+                    </div>
+                  </div>
 
-              <TabsContent value="gallery" className="mt-6">
-                <HeadshotGallery images={[]} />
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-4">
+                      <div className="bg-muted/30 p-4 rounded-lg">
+                        <h3 className="font-medium text-sm text-muted-foreground mb-2">
+                          Account Information
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">
+                              Full Name
+                            </span>
+                            <span className="text-sm">
+                              {user.user_metadata?.full_name || "Not provided"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">Email</span>
+                            <span className="text-sm">{user.email}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">
+                              Email Verified
+                            </span>
+                            <span className="text-sm">
+                              {user.email_confirmed_at ? "Yes" : "No"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-muted/30 p-4 rounded-lg">
+                        <h3 className="font-medium text-sm text-muted-foreground mb-2">
+                          Account Activity
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">Created</span>
+                            <span className="text-sm">
+                              {new Date(user.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm font-medium">
+                              Last Sign In
+                            </span>
+                            <span className="text-sm">
+                              {new Date(
+                                user.last_sign_in_at,
+                              ).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </TabsContent>
 
               <TabsContent value="history" className="mt-6">
@@ -96,29 +194,86 @@ export default async function Dashboard() {
                   <h2 className="text-xl font-semibold mb-4">
                     Generation History
                   </h2>
-                  <p className="text-muted-foreground">
-                    You haven't generated any headshots yet. Upload photos to
-                    get started!
-                  </p>
+                  <UserHeadshotHistory userId={user.id} />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="subscription" className="mt-6">
+                <div className="bg-card rounded-xl p-6 border shadow-sm">
+                  <h2 className="text-xl font-semibold mb-4">
+                    Subscription Details
+                  </h2>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                      <div>
+                        <p className="font-medium">Current Plan</p>
+                        <div className="mt-1">
+                          <SubscriptionBadge />
+                        </div>
+                      </div>
+                      <Suspense fallback={<div>Loading...</div>}>
+                        {result?.url && (
+                          <ManageSubscription redirectUrl={result?.url!} />
+                        )}
+                      </Suspense>
+                    </div>
+                    <div className="p-4 bg-muted/30 rounded-lg">
+                      <p className="font-medium mb-2">Subscription Period</p>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Start Date</p>
+                          <p>
+                            {subscriptionDetails?.created_at
+                              ? new Date(
+                                  subscriptionDetails.created_at,
+                                ).toLocaleDateString()
+                              : "Not available"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">End Date</p>
+                          <p>
+                            {subscriptionDetails?.current_period_end
+                              ? new Date(
+                                  subscriptionDetails.current_period_end,
+                                ).toLocaleDateString()
+                              : subscriptionDetails?.cancel_at
+                                ? new Date(
+                                    subscriptionDetails.cancel_at,
+                                  ).toLocaleDateString()
+                                : "Not available"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {subscriptionDetails && (
+                      <div className="p-4 bg-muted/30 rounded-lg">
+                        <p className="font-medium mb-2">Subscription Status</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Status</p>
+                            <p className="capitalize">
+                              {subscriptionDetails.status || "Unknown"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">
+                              Auto Renewal
+                            </p>
+                            <p>
+                              {subscriptionDetails.cancel_at_period_end ===
+                              false
+                                ? "Enabled"
+                                : "Disabled"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
-
-            {/* User Profile Section */}
-            <section className="bg-card rounded-xl p-6 border shadow-sm mt-8">
-              <div className="flex items-center gap-4 mb-6">
-                <UserCircle size={48} className="text-primary" />
-                <div>
-                  <h2 className="font-semibold text-xl">User Profile</h2>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
-                </div>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4 overflow-hidden">
-                <pre className="text-xs font-mono max-h-48 overflow-auto">
-                  {JSON.stringify(user, null, 2)}
-                </pre>
-              </div>
-            </section>
           </div>
         </main>
         <Footer />

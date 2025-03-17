@@ -125,13 +125,21 @@ export async function generateHeadshot(
 
     // Retry logic for transient errors
     if (retryCount < GEMINI_CONFIG.MAX_RETRIES) {
+      // Check if it's a rate limit error (429)
+      const isRateLimitError = error.message && error.message.includes("429");
+      const isQuotaError = error.message && error.message.includes("quota");
+
+      // Longer delay for rate limit errors
+      const baseDelay = isRateLimitError || isQuotaError ? 5000 : 1000;
+      const delay = baseDelay * Math.pow(2, retryCount);
+
       console.log(
-        `Retrying image generation (attempt ${retryCount + 1} of ${GEMINI_CONFIG.MAX_RETRIES})`,
+        `Retrying image generation (attempt ${retryCount + 1} of ${GEMINI_CONFIG.MAX_RETRIES}) after ${delay}ms delay. ${isRateLimitError ? "Rate limit detected - using longer delay." : ""}`,
       );
-      // Wait before retrying (exponential backoff)
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 * Math.pow(2, retryCount)),
-      );
+
+      // Wait before retrying (exponential backoff with longer delay for rate limits)
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
       return generateHeadshot(
         imageBase64,
         mimeType,
@@ -168,23 +176,41 @@ export async function processImages(
     for (let i = 0; i < images.length; i += MAX_CONCURRENT) {
       const batch = images.slice(i, i + MAX_CONCURRENT);
 
-      // Process each image in the current batch in parallel
-      const batchPromises = batch.map((image) =>
-        generateHeadshot(image.content, image.contentType, prompt, style).catch(
-          (error) => {
-            console.error(`Error processing image: ${error.message}`);
-            return null; // Return null for failed generations
-          },
-        ),
-      );
+      // Process each image in the current batch sequentially to avoid rate limiting
+      for (const image of batch) {
+        try {
+          console.log(
+            `Processing image ${results.length + 1} of ${images.length}`,
+          );
+          const result = await generateHeadshot(
+            image.content,
+            image.contentType,
+            prompt,
+            style,
+          );
+          results.push(result);
 
-      // Wait for the current batch to complete
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults);
+          // Add a delay between individual image processing to avoid rate limiting
+          if (results.length < images.length) {
+            const delay = 2000; // 2 seconds between individual images
+            console.log(
+              `Waiting ${delay}ms before processing next image to avoid rate limiting`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        } catch (error) {
+          console.error(`Error processing image: ${error.message}`);
+          results.push(null); // Return null for failed generations
+        }
+      }
 
-      // Add a small delay between batches to avoid rate limiting
+      // Add a longer delay between batches to avoid rate limiting
       if (i + MAX_CONCURRENT < images.length) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const batchDelay = GEMINI_CONFIG.BATCH_DELAY || 3000;
+        console.log(
+          `Completed batch. Waiting ${batchDelay}ms before starting next batch to avoid rate limiting`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, batchDelay));
       }
     }
 

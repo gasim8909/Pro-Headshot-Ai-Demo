@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSubscription } from "./subscription-context";
 import { Button } from "./ui/button";
 import { GradientButton } from "./ui/gradient-button";
@@ -23,12 +23,24 @@ import {
   Camera,
   Sparkles,
   Download,
+  Lock,
+  CheckCircle,
+  Info,
 } from "lucide-react";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import SaveToHistoryButton from "./save-to-history-button";
 import { ErrorMessage } from "./error-message";
 import { Shimmer } from "./ui/shimmer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
+import { Badge } from "./ui/badge";
+import { CreditIndicator } from "./credit-indicator";
+import { SUBSCRIPTION_TIERS } from "@/lib/config";
 
 export default function UploadForm({ user }: { user?: User | null }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -47,6 +59,16 @@ export default function UploadForm({ user }: { user?: User | null }) {
   // Get subscription data
   const { isSubscribed, tier, maxUploads, maxGenerations, hasAdvancedStyles } =
     useSubscription();
+
+  // State for tracking credits
+  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
+
+  // Define subscription features based on tier
+  const subscriptionFeatures = {
+    free: SUBSCRIPTION_TIERS.FREE,
+    premium: SUBSCRIPTION_TIERS.PREMIUM,
+    pro: SUBSCRIPTION_TIERS.PRO,
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -117,6 +139,32 @@ export default function UploadForm({ user }: { user?: User | null }) {
         setError({
           title: "Files too large",
           message: `${oversizedFiles.length} file(s) exceed the 10MB limit. Please select smaller files.`,
+          severity: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if user has credits available
+      let hasCredits = false;
+
+      if (user?.id) {
+        // For logged in users, use server action
+        const { checkAndUseCredit } = await import("@/app/actions");
+        hasCredits = await checkAndUseCredit(user?.id);
+      } else {
+        // For guests, use client-side function
+        const { useGuestCredit } = await import("@/lib/credits");
+        hasCredits = useGuestCredit();
+      }
+
+      if (!hasCredits) {
+        setError({
+          title: "Credit Limit Reached",
+          message:
+            tier === "free"
+              ? "You've reached your monthly limit of 5 uploads. Upgrade to Premium for more."
+              : "You've reached your monthly upload limit. Please wait until next month or contact support.",
           severity: "error",
         });
         setIsLoading(false);
@@ -266,7 +314,33 @@ export default function UploadForm({ user }: { user?: User | null }) {
     setGeneratedImages([]);
     setIsGenerated(false);
     setStyle("professional");
+    // Refresh credits after reset
+    fetchCreditsRemaining();
   };
+
+  // Fetch remaining credits
+  const fetchCreditsRemaining = async () => {
+    try {
+      if (user?.id) {
+        // For logged in users, fetch from server action
+        const { getRemainingCreditsAction } = await import("@/app/actions");
+        const { credits } = await getRemainingCreditsAction(user?.id);
+        setCreditsRemaining(credits);
+      } else {
+        // For guests, use localStorage
+        const { getGuestCreditsRemaining } = await import("@/lib/credits");
+        const credits = getGuestCreditsRemaining();
+        setCreditsRemaining(credits);
+      }
+    } catch (error) {
+      console.error("Error fetching credits:", error);
+    }
+  };
+
+  // Fetch credits on component mount
+  useEffect(() => {
+    fetchCreditsRemaining();
+  }, [user?.id]);
 
   if (isLoading) {
     return (
@@ -379,13 +453,13 @@ export default function UploadForm({ user }: { user?: User | null }) {
             {generatedImages.slice(0, 4).map((image, index) => (
               <div
                 key={index}
-                className="rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all group bg-white border border-gray-100"
+                className="rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all group bg-white border border-gray-100 relative"
               >
                 <div className="aspect-[4/5] relative overflow-hidden">
                   <img
                     src={image}
                     alt={`AI Headshot ${index + 1}`}
-                    className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105 object-center"
+                    className={`object-cover w-full h-full transition-transform duration-500 group-hover:scale-105 object-center ${!user && index >= 2 ? "blur-sm" : ""}`}
                     style={{ objectPosition: "center" }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-start p-4">
@@ -393,6 +467,36 @@ export default function UploadForm({ user }: { user?: User | null }) {
                       {style.charAt(0).toUpperCase() + style.slice(1)} Style
                     </span>
                   </div>
+
+                  {/* Sign-up overlay for locked images (for guests, last 2 images) */}
+                  {!user && index >= 2 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-center">
+                      <Lock className="h-8 w-8 text-white mb-2" />
+                      <h3 className="text-sm font-bold text-white mb-1">
+                        Sign Up to Unlock
+                      </h3>
+                      <p className="text-white/90 text-xs mb-3">
+                        Create a free account to access all headshots
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs bg-white/20 text-white hover:bg-white/30 border-white/40"
+                          asChild
+                        >
+                          <Link href="/sign-in">Sign In</Link>
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="text-xs bg-gradient-to-r from-blue-500 to-purple-500 text-white border-0"
+                          asChild
+                        >
+                          <Link href="/sign-up">Sign Up</Link>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 bg-white flex flex-col gap-2">
                   <div className="flex justify-between items-center">
@@ -406,6 +510,7 @@ export default function UploadForm({ user }: { user?: User | null }) {
                       variant="outline"
                       className="group-hover:bg-gradient-to-r group-hover:from-blue-500 group-hover:to-purple-500 group-hover:text-white group-hover:border-transparent transition-all"
                       asChild
+                      disabled={!user && index >= 2}
                     >
                       <a href={image} download={`ai-headshot-${index + 1}.jpg`}>
                         <Download className="mr-1 h-3 w-3" />
@@ -413,12 +518,27 @@ export default function UploadForm({ user }: { user?: User | null }) {
                       </a>
                     </Button>
                   </div>
-                  {user && (
+                  {user ? (
                     <SaveToHistoryButton
                       image={image}
                       style={style}
                       description={prompt || `AI Headshot ${index + 1}`}
                     />
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-xs flex items-center gap-1 bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                      disabled
+                      asChild
+                    >
+                      <Link
+                        href="/sign-up"
+                        className="flex items-center justify-center gap-1"
+                      >
+                        <Save className="h-3 w-3" /> Sign up to save to history
+                      </Link>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -454,11 +574,86 @@ export default function UploadForm({ user }: { user?: User | null }) {
   return (
     <Card className="w-full max-w-3xl mx-auto mt-16">
       <CardHeader>
-        <CardTitle>Upload Your Photos</CardTitle>
-        <CardDescription>
-          Upload 3-5 photos of yourself for best results. Choose clear photos
-          with good lighting.
-        </CardDescription>
+        <div className="flex justify-between items-start">
+          <div>
+            <CardTitle>Upload Your Photos</CardTitle>
+            <CardDescription>
+              Upload 3-5 photos of yourself for best results. Choose clear
+              photos with good lighting.
+            </CardDescription>
+          </div>
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            <Badge
+              variant="outline"
+              className={`${tier === "free" ? "bg-gray-100 text-gray-800" : tier === "premium" ? "bg-gradient-to-r from-amber-200 to-amber-400 text-amber-900" : "bg-gradient-to-r from-purple-400 to-blue-500 text-white"}`}
+            >
+              {tier.charAt(0).toUpperCase() + tier.slice(1)} Plan
+            </Badge>
+            <CreditIndicator user={user} className="w-full" />
+          </div>
+        </div>
+
+        {/* Subscription features summary */}
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+            <Info className="h-4 w-4 text-blue-500" />
+            Your Plan Features
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div className="flex flex-col">
+              <span className="text-gray-500">Uploads</span>
+              <span className="font-medium">
+                {
+                  subscriptionFeatures[
+                    tier as keyof typeof subscriptionFeatures
+                  ].maxUploads
+                }
+                /month
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-gray-500">Variations</span>
+              <span className="font-medium">
+                {
+                  subscriptionFeatures[
+                    tier as keyof typeof subscriptionFeatures
+                  ].maxVariations
+                }{" "}
+                per upload
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-gray-500">Styles</span>
+              <span className="font-medium">
+                {
+                  subscriptionFeatures[
+                    tier as keyof typeof subscriptionFeatures
+                  ].styles.length
+                }{" "}
+                styles
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-gray-500">Prompting</span>
+              <span className="font-medium">
+                {subscriptionFeatures[tier as keyof typeof subscriptionFeatures]
+                  .customPrompting
+                  ? "Custom"
+                  : "Basic"}
+              </span>
+            </div>
+          </div>
+          {tier === "free" && (
+            <div className="mt-3 text-xs text-blue-600">
+              <Link
+                href="/pricing"
+                className="flex items-center gap-1 hover:underline"
+              >
+                <Lock className="h-3 w-3" /> Upgrade your plan for more features
+              </Link>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {error && (
@@ -471,7 +666,14 @@ export default function UploadForm({ user }: { user?: User | null }) {
         )}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="photos">Upload Photos</Label>
+            <div className="flex justify-between items-center">
+              <Label htmlFor="photos">Upload Photos</Label>
+              <span className="text-xs text-muted-foreground">
+                {maxUploads === "Unlimited"
+                  ? "Unlimited uploads"
+                  : `${previews.length} of ${maxUploads} photos`}
+              </span>
+            </div>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-50 transition-colors bg-gradient-to-b from-white to-gray-50 group">
               <Input
                 id="photos"
@@ -497,6 +699,16 @@ export default function UploadForm({ user }: { user?: User | null }) {
                   PNG, JPG, WEBP up to 10MB each. Gemini Flash processes images
                   instantly.
                 </span>
+                <div className="mt-2 text-xs text-blue-600 flex items-center gap-1">
+                  <Info className="h-3 w-3" />
+                  Your plan allows{" "}
+                  {
+                    subscriptionFeatures[
+                      tier as keyof typeof subscriptionFeatures
+                    ].maxUploads
+                  }{" "}
+                  uploads per month
+                </div>
               </Label>
             </div>
           </div>
@@ -547,7 +759,16 @@ export default function UploadForm({ user }: { user?: User | null }) {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="style">Headshot Style</Label>
+            <div className="flex justify-between items-center">
+              <Label htmlFor="style">Headshot Style</Label>
+              <span className="text-xs text-muted-foreground">
+                {tier === "free"
+                  ? `1 of ${subscriptionFeatures.free.styles.length} available`
+                  : tier === "premium"
+                    ? `1 of ${subscriptionFeatures.premium.styles.length} available`
+                    : "Unlimited styles"}
+              </span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 {
@@ -562,97 +783,278 @@ export default function UploadForm({ user }: { user?: User | null }) {
                   name: "Creative",
                   description: "Artistic, expressive",
                   icon: <Camera className="h-5 w-5" />,
-                  premium: tier === "free",
+                  premium:
+                    !subscriptionFeatures[
+                      tier as keyof typeof subscriptionFeatures
+                    ].styles.includes("creative"),
                 },
                 {
                   id: "casual",
                   name: "Casual",
                   description: "Relaxed, approachable",
                   icon: <ImageIcon className="h-5 w-5" />,
-                  premium: tier === "free",
+                  premium:
+                    !subscriptionFeatures[
+                      tier as keyof typeof subscriptionFeatures
+                    ].styles.includes("casual"),
                 },
-              ].map((styleOption) => (
-                <div
-                  key={styleOption.id}
-                  className={`border rounded-lg p-5 transition-all ${styleOption.premium ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${style === styleOption.id ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"}`}
-                  onClick={() =>
-                    !styleOption.premium && setStyle(styleOption.id)
-                  }
-                >
-                  {styleOption.premium && (
-                    <div className="absolute top-2 right-2 bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
-                      Premium
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 mb-1">
-                    <div
-                      className={`text-${style === styleOption.id ? "blue" : "gray"}-500`}
-                    >
-                      {styleOption.icon}
-                    </div>
-                    <div className="font-medium">{styleOption.name}</div>
-                  </div>
-                  <div className="text-sm text-gray-500 ml-7">
-                    {styleOption.description}
-                  </div>
-                </div>
-              ))}
+                // Additional styles that are premium/pro only
+                {
+                  id: "modern",
+                  name: "Modern",
+                  description: "Contemporary, trendy",
+                  icon: <CheckCircle className="h-5 w-5" />,
+                  premium:
+                    !subscriptionFeatures[
+                      tier as keyof typeof subscriptionFeatures
+                    ].styles.includes("modern"),
+                  proOnly: tier === "free",
+                },
+                {
+                  id: "executive",
+                  name: "Executive",
+                  description: "Powerful, authoritative",
+                  icon: <CheckCircle className="h-5 w-5" />,
+                  premium:
+                    !subscriptionFeatures[
+                      tier as keyof typeof subscriptionFeatures
+                    ].styles.includes("executive"),
+                  proOnly: tier === "free",
+                },
+              ]
+                .slice(0, tier === "free" ? 3 : tier === "premium" ? 5 : 5)
+                .map((styleOption) => (
+                  <TooltipProvider key={styleOption.id}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div
+                          className={`border relative rounded-lg p-5 transition-all ${styleOption.premium ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${style === styleOption.id ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"}`}
+                          onClick={() =>
+                            !styleOption.premium && setStyle(styleOption.id)
+                          }
+                        >
+                          {styleOption.premium && (
+                            <div
+                              className={`absolute top-2 right-2 ${styleOption.proOnly ? "bg-purple-100 text-purple-800" : "bg-amber-100 text-amber-800"} text-xs px-2 py-1 rounded-full flex items-center gap-1`}
+                            >
+                              <Lock className="h-3 w-3" />
+                              {styleOption.proOnly ? "Pro" : "Premium"}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 mb-1">
+                            <div
+                              className={`text-${style === styleOption.id ? "blue" : "gray"}-500`}
+                            >
+                              {styleOption.icon}
+                            </div>
+                            <div className="font-medium">
+                              {styleOption.name}
+                            </div>
+                          </div>
+                          <div className="text-sm text-gray-500 ml-7">
+                            {styleOption.description}
+                          </div>
+                        </div>
+                      </TooltipTrigger>
+                      {styleOption.premium && (
+                        <TooltipContent side="top" className="p-3 max-w-xs">
+                          <p className="font-medium">
+                            {styleOption.proOnly
+                              ? "Pro Plan Feature"
+                              : "Premium Plan Feature"}
+                          </p>
+                          <p className="text-sm mt-1">
+                            Upgrade your plan to access {styleOption.name} style
+                            and more advanced features.
+                          </p>
+                          <div className="mt-2">
+                            <Link
+                              href="/pricing"
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              View pricing plans →
+                            </Link>
+                          </div>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <Label htmlFor="prompt">
-                Custom Enhancement Instructions (Optional)
-              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="prompt">Custom Enhancement Instructions</Label>
+                {!subscriptionFeatures[
+                  tier as keyof typeof subscriptionFeatures
+                ].customPrompting && (
+                  <Badge
+                    variant="outline"
+                    className="bg-gray-100 text-gray-700 flex items-center gap-1"
+                  >
+                    <Lock className="h-3 w-3" /> Premium Feature
+                  </Badge>
+                )}
+                {subscriptionFeatures[tier as keyof typeof subscriptionFeatures]
+                  .advancedPrompting && (
+                  <Badge
+                    variant="outline"
+                    className="bg-purple-100 text-purple-700 flex items-center gap-1"
+                  >
+                    <CheckCircle className="h-3 w-3" /> Advanced Prompting
+                  </Badge>
+                )}
+              </div>
               <span className="text-xs text-muted-foreground">
-                For best results, be specific and clear
+                {subscriptionFeatures[tier as keyof typeof subscriptionFeatures]
+                  .customPrompting
+                  ? "For best results, be specific and clear"
+                  : "Upgrade to unlock"}
               </span>
             </div>
-            <Textarea
-              id="prompt"
-              placeholder="Examples: 'Professional headshot with a subtle blue gradient background and soft side lighting' or 'Casual style with natural outdoor lighting and a slight smile' or 'Creative portrait with dramatic side lighting and urban background'"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="min-h-[100px]"
-            />
-            <div className="text-xs text-muted-foreground mt-1">
-              <p>Tips for effective prompts:</p>
-              <ul className="list-disc pl-5 mt-1 space-y-1">
-                <li>
-                  Specify desired background (color, texture, environment)
-                </li>
-                <li>
-                  Describe preferred lighting style (soft, dramatic, natural)
-                </li>
-                <li>Mention facial expression or pose if important</li>
-                <li>Include any specific color tones or mood you want</li>
-                <li>Keep instructions clear and concise for best results</li>
-              </ul>
-            </div>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative">
+                    <Textarea
+                      id="prompt"
+                      placeholder={
+                        subscriptionFeatures[
+                          tier as keyof typeof subscriptionFeatures
+                        ].customPrompting
+                          ? "Examples: 'Professional headshot with a subtle blue gradient background and soft side lighting' or 'Casual style with natural outdoor lighting and a slight smile' or 'Creative portrait with dramatic side lighting and urban background'"
+                          : "Custom prompting is available on Premium and Pro plans"
+                      }
+                      value={prompt}
+                      onChange={(e) =>
+                        subscriptionFeatures[
+                          tier as keyof typeof subscriptionFeatures
+                        ].customPrompting && setPrompt(e.target.value)
+                      }
+                      className={`min-h-[100px] ${!subscriptionFeatures[tier as keyof typeof subscriptionFeatures].customPrompting ? "cursor-not-allowed bg-gray-50" : ""}`}
+                      disabled={
+                        !subscriptionFeatures[
+                          tier as keyof typeof subscriptionFeatures
+                        ].customPrompting
+                      }
+                    />
+                    {!subscriptionFeatures[
+                      tier as keyof typeof subscriptionFeatures
+                    ].customPrompting && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 rounded-md">
+                        <div className="flex flex-col items-center gap-2 p-4 text-center">
+                          <Lock className="h-5 w-5 text-gray-400" />
+                          <p className="text-sm font-medium text-gray-500">
+                            Custom prompting available on Premium and Pro plans
+                          </p>
+                          <Link
+                            href="/pricing"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            Upgrade now
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                {!subscriptionFeatures[
+                  tier as keyof typeof subscriptionFeatures
+                ].customPrompting && (
+                  <TooltipContent side="top" className="p-3 max-w-xs">
+                    <p className="font-medium">Premium Feature</p>
+                    <p className="text-sm mt-1">
+                      Custom prompting allows you to control exactly how your
+                      headshots are generated with specific instructions.
+                    </p>
+                    <div className="mt-2">
+                      <Link
+                        href="/pricing"
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        View pricing plans →
+                      </Link>
+                    </div>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+
+            {subscriptionFeatures[tier as keyof typeof subscriptionFeatures]
+              .customPrompting && (
+              <div className="text-xs text-muted-foreground mt-1">
+                <p>Tips for effective prompts:</p>
+                <ul className="list-disc pl-5 mt-1 space-y-1">
+                  <li>
+                    Specify desired background (color, texture, environment)
+                  </li>
+                  <li>
+                    Describe preferred lighting style (soft, dramatic, natural)
+                  </li>
+                  <li>Mention facial expression or pose if important</li>
+                  <li>Include any specific color tones or mood you want</li>
+                  <li>Keep instructions clear and concise for best results</li>
+                  {subscriptionFeatures[
+                    tier as keyof typeof subscriptionFeatures
+                  ].advancedPrompting && (
+                    <li className="text-purple-700 font-medium">
+                      Pro users: You can use advanced parameters for precise
+                      control
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
         </form>
       </CardContent>
-      <CardFooter className="flex justify-between">
-        <Button variant="outline" disabled={isLoading}>
-          Cancel
-        </Button>
-        <GradientButton
-          onClick={handleSubmit}
-          disabled={files.length === 0 || isLoading}
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generate Headshots
-            </>
-          )}
-        </GradientButton>
+      <CardFooter className="flex flex-col gap-4">
+        <div className="flex justify-between w-full">
+          <Button variant="outline" disabled={isLoading}>
+            Cancel
+          </Button>
+          <GradientButton
+            onClick={handleSubmit}
+            disabled={files.length === 0 || isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate{" "}
+                {
+                  subscriptionFeatures[
+                    tier as keyof typeof subscriptionFeatures
+                  ].maxVariations
+                }{" "}
+                Headshots
+              </>
+            )}
+          </GradientButton>
+        </div>
+
+        {tier === "free" && (
+          <div className="w-full p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+            <Info className="h-4 w-4 flex-shrink-0" />
+            <div>
+              <span className="font-medium">Free Plan Limitations:</span> You
+              can generate {subscriptionFeatures.free.maxVariations} headshots
+              per upload, with {subscriptionFeatures.free.maxUploads} uploads
+              per month.
+              <Link href="/pricing" className="ml-1 underline">
+                Upgrade
+              </Link>{" "}
+              for more features.
+            </div>
+          </div>
+        )}
       </CardFooter>
     </Card>
   );

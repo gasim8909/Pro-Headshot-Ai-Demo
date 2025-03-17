@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Download, Trash2, AlertCircle } from "lucide-react";
 import { Shimmer } from "./ui/shimmer";
+import { LazyImage } from "./ui/lazy-image";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,19 +30,53 @@ export default function UserHeadshotHistory({ userId }: { userId: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Use sessionStorage to cache headshots data
   const fetchHeadshots = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch("/api/headshots/list");
+      // Check if we have cached data in sessionStorage
+      const cachedData = sessionStorage.getItem(`headshots-${userId}`);
+      if (cachedData) {
+        const { data, timestamp } = JSON.parse(cachedData);
+        const cacheAge = Date.now() - timestamp;
+
+        // Use cache if it's less than 5 minutes old
+        if (cacheAge < 5 * 60 * 1000) {
+          console.log("Using cached headshots data");
+          setHeadshots(data);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // If no valid cache, fetch from API
+      console.log("Fetching headshots from API");
+      const response = await fetch("/api/headshots/list", {
+        cache: "default", // Use browser's standard cache behavior
+        headers: {
+          "Cache-Control": "max-age=300", // 5 minutes
+        },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch headshots: ${response.status}`);
       }
 
       const data = await response.json();
-      setHeadshots(data.headshots || []);
+      const headshotsData = data.headshots || [];
+
+      // Save to sessionStorage with timestamp
+      sessionStorage.setItem(
+        `headshots-${userId}`,
+        JSON.stringify({
+          data: headshotsData,
+          timestamp: data.timestamp || Date.now(),
+        }),
+      );
+
+      setHeadshots(headshotsData);
     } catch (err) {
       console.error("Error fetching headshots:", err);
       setError("Failed to load your headshot history. Please try again later.");
@@ -52,7 +87,12 @@ export default function UserHeadshotHistory({ userId }: { userId: string }) {
 
   useEffect(() => {
     fetchHeadshots();
-  }, []);
+
+    // Clear cache on component unmount if user logs out
+    return () => {
+      // We don't clear the cache here to keep it between tab switches
+    };
+  }, [userId]);
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -101,14 +141,21 @@ export default function UserHeadshotHistory({ userId }: { userId: string }) {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((_, index) => (
-            <Card key={index} className="overflow-hidden">
-              <div className="aspect-[3/4] relative">
+          {[1, 2, 3, 4, 5, 6].map((_, index) => (
+            <Card key={index} className="overflow-hidden animate-pulse">
+              <div className="aspect-[3/4] relative bg-gray-200">
                 <Shimmer className="w-full h-full" />
               </div>
               <CardContent className="p-4">
                 <Shimmer className="h-4 w-3/4 mb-2" />
                 <Shimmer className="h-4 w-1/2" />
+                <div className="flex justify-between mt-3">
+                  <Shimmer className="h-3 w-1/4" />
+                  <div className="flex gap-2">
+                    <Shimmer className="h-6 w-6 rounded-full" />
+                    <Shimmer className="h-6 w-6 rounded-full" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -205,10 +252,11 @@ export default function UserHeadshotHistory({ userId }: { userId: string }) {
             className="overflow-hidden group hover:shadow-md transition-shadow"
           >
             <div className="aspect-[3/4] relative overflow-hidden">
-              <img
+              <LazyImage
                 src={headshot.image_url}
                 alt={headshot.description || "AI Headshot"}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="w-full h-full transition-transform duration-500 group-hover:scale-105"
+                aspectRatio="aspect-[3/4]"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-start p-4">
                 <span className="text-white font-medium text-sm">

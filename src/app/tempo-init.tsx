@@ -7,7 +7,11 @@ import { useEffect } from "react";
 export function TempoInit() {
   useEffect(() => {
     if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_TEMPO) {
-      TempoDevtools.init();
+      try {
+        TempoDevtools.init();
+      } catch (error) {
+        console.error("Error initializing Tempo devtools:", error);
+      }
     }
   }, []);
 

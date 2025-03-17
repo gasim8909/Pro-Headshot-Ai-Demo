@@ -29,9 +29,18 @@ export default async function Pricing() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
-          {result?.map((item: any) => (
-            <PricingCard key={item.id} item={item} user={user} />
-          ))}
+          {result
+            ?.sort((a: any, b: any) => {
+              // Custom sort order: Free first, then Premium, then Professional
+              const nameOrder = { Free: 1, Premium: 2, Professional: 3 };
+              // Ensure case-insensitive comparison and handle undefined names
+              const aName = a.name?.trim() || "";
+              const bName = b.name?.trim() || "";
+              return (nameOrder[aName] || 999) - (nameOrder[bName] || 999);
+            })
+            .map((item: any) => (
+              <PricingCard key={item.id} item={item} user={user} />
+            ))}
         </div>
       </div>
     </>

@@ -121,12 +121,15 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           credits: string | null
+          credits_reset_date: string | null
+          credits_used: number | null
           email: string | null
           full_name: string | null
           id: string
           image: string | null
           name: string | null
           subscription: string | null
+          subscription_tier: string | null
           token_identifier: string
           updated_at: string | null
           user_id: string | null
@@ -135,12 +138,15 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           credits?: string | null
+          credits_reset_date?: string | null
+          credits_used?: number | null
           email?: string | null
           full_name?: string | null
           id: string
           image?: string | null
           name?: string | null
           subscription?: string | null
+          subscription_tier?: string | null
           token_identifier: string
           updated_at?: string | null
           user_id?: string | null
@@ -149,12 +155,15 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           credits?: string | null
+          credits_reset_date?: string | null
+          credits_used?: number | null
           email?: string | null
           full_name?: string | null
           id?: string
           image?: string | null
           name?: string | null
           subscription?: string | null
+          subscription_tier?: string | null
           token_identifier?: string
           updated_at?: string | null
           user_id?: string | null

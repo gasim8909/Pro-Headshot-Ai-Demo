@@ -22,9 +22,6 @@ export default function UserProfile() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <div className="px-2 py-1.5 flex items-center justify-between">
-          <span className="text-sm font-medium">Account</span>
-        </div>
         <DropdownMenuItem>
           <a href="/dashboard" className="flex items-center gap-2 w-full">
             Dashboard

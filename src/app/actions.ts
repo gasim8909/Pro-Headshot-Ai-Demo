@@ -3,9 +3,10 @@
 import { api } from "@/lib/polar";
 import { createClient } from "../../supabase/server";
 import { encodedRedirect } from "@/utils/utils";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Polar } from "@polar-sh/sdk";
+import { CREDIT_LIMITS, getCurrentMonth } from "@/lib/credits";
 
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
@@ -242,4 +243,203 @@ export const manageSubscriptionAction = async (userId: string) => {
     console.error("Error managing subscription:", error);
     return { error: "Error managing subscription" };
   }
+};
+
+// Function to get user credits from Supabase
+export const getUserCredits = async (userId: string) => {
+  try {
+    const supabase = await createClient();
+
+    // Get user subscription status
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select(
+        "subscription_tier, credits_used, credits_reset_date, subscription",
+      )
+      .eq("id", userId)
+      .single();
+
+    if (userError) throw userError;
+
+    // If no user data or missing fields, return default values
+    if (!userData) {
+      return {
+        creditsRemaining: CREDIT_LIMITS.free,
+        creditsUsed: 0,
+        tier: "free",
+      };
+    }
+
+    console.log("User data from getUserCredits:", userData);
+
+    const currentMonth = getCurrentMonth();
+    const resetDate = userData.credits_reset_date || "";
+
+    // Determine tier from subscription_tier or derive it from subscription field
+    let tier = "free";
+    if (userData.subscription_tier) {
+      tier = userData.subscription_tier;
+      console.log("Using existing subscription_tier:", tier);
+    } else if (userData.subscription) {
+      // If subscription exists but no tier, check subscription details
+      const { data: subData, error: subError } = await supabase
+        .from("subscriptions")
+        .select("*")
+        .eq("polar_id", userData.subscription)
+        .single();
+
+      if (!subError && subData && subData.status === "active") {
+        // Determine tier based on price ID
+        const priceId = subData.polar_price_id;
+        console.log("Subscription price ID from getUserCredits:", priceId);
+
+        if (priceId && priceId.toLowerCase().includes("pro")) {
+          tier = "pro";
+        } else if (priceId && priceId.toLowerCase().includes("premium")) {
+          tier = "premium";
+        } else {
+          // Default to premium if they have any active subscription
+          tier = "premium";
+        }
+
+        console.log(
+          "Determined tier from subscription in getUserCredits:",
+          tier,
+        );
+      } else {
+        // Fallback to checking if subscription string contains tier info
+        if (userData.subscription.includes("premium")) {
+          tier = "premium";
+        } else if (userData.subscription.includes("pro")) {
+          tier = "pro";
+        }
+      }
+
+      // Update the user record with the derived tier
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({
+          subscription_tier: tier,
+        })
+        .eq("id", userId);
+
+      if (updateError) {
+        console.error("Error updating subscription_tier:", updateError);
+      } else {
+        console.log("Updated user's subscription_tier to:", tier);
+      }
+    }
+
+    // If it's a new month, reset credits
+    if (resetDate !== currentMonth) {
+      const { error: resetError } = await supabase
+        .from("users")
+        .update({
+          credits_used: 0,
+          credits_reset_date: currentMonth,
+        })
+        .eq("id", userId);
+
+      if (resetError) {
+        console.error("Error resetting credits:", resetError);
+      }
+
+      return {
+        creditsRemaining: CREDIT_LIMITS[tier as keyof typeof CREDIT_LIMITS],
+        creditsUsed: 0,
+        tier,
+      };
+    }
+
+    // Calculate remaining credits
+    const creditsUsed = userData.credits_used || 0;
+    const totalCredits = CREDIT_LIMITS[tier as keyof typeof CREDIT_LIMITS];
+    const creditsRemaining = Math.max(0, totalCredits - creditsUsed);
+
+    return { creditsRemaining, creditsUsed, tier };
+  } catch (error) {
+    console.error("Error getting user credits:", error);
+    return {
+      creditsRemaining: CREDIT_LIMITS.free,
+      creditsUsed: 0,
+      tier: "free",
+    };
+  }
+};
+
+// Function to use a credit (decrement from user's available credits)
+export const useUserCredit = async (userId: string) => {
+  try {
+    const supabase = await createClient();
+
+    // Get current user data
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("subscription_tier, credits_used, credits_reset_date")
+      .eq("id", userId)
+      .single();
+
+    if (userError) throw userError;
+    if (!userData) return false;
+
+    const currentMonth = getCurrentMonth();
+    const resetDate = userData.credits_reset_date || "";
+    const tier = userData.subscription_tier || "free";
+
+    // If it's a new month, reset credits
+    if (resetDate !== currentMonth) {
+      await supabase
+        .from("users")
+        .update({
+          credits_used: 1,
+          credits_reset_date: currentMonth,
+        })
+        .eq("id", userId);
+
+      return true;
+    }
+
+    // Check if user has credits left
+    const creditsUsed = userData.credits_used || 0;
+    const totalCredits = CREDIT_LIMITS[tier as keyof typeof CREDIT_LIMITS];
+
+    if (creditsUsed >= totalCredits) return false;
+
+    // Increment credits used
+    await supabase
+      .from("users")
+      .update({
+        credits_used: creditsUsed + 1,
+      })
+      .eq("id", userId);
+
+    return true;
+  } catch (error) {
+    console.error("Error using user credit:", error);
+    return false;
+  }
+};
+
+// Server action to check and use credits
+export const checkAndUseCredit = async (userId?: string) => {
+  // For registered users
+  if (userId) {
+    return await useUserCredit(userId);
+  }
+
+  // For guests, we'll return true and let the client handle it
+  return true;
+};
+
+// Server action to get remaining credits
+export const getRemainingCreditsAction = async (userId?: string) => {
+  // For registered users
+  if (userId) {
+    const { creditsRemaining, tier } = await getUserCredits(userId);
+    return { credits: creditsRemaining, tier };
+  }
+
+  // For guests, we'll return the default free tier value
+  // The actual tracking will happen client-side
+  return { credits: CREDIT_LIMITS.free, tier: "free" };
 };

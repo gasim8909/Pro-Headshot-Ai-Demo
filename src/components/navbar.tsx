@@ -5,11 +5,16 @@ import { Camera, UserCircle } from "lucide-react";
 import UserProfile from "./user-profile";
 
 export default async function Navbar() {
-  const supabase = createClient();
+  let user = null;
 
-  const {
-    data: { user },
-  } = await (await supabase).auth.getUser();
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    // Continue with user as null
+  }
 
   return (
     <nav className="w-full border-b border-gray-200 bg-white py-4 fixed top-0 left-0 right-0 z-50 h-16">
@@ -47,11 +52,6 @@ export default async function Navbar() {
         <div className="flex gap-4 items-center">
           {user ? (
             <>
-              <Link href="/dashboard">
-                <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
-                  Dashboard
-                </Button>
-              </Link>
               <UserProfile />
             </>
           ) : (

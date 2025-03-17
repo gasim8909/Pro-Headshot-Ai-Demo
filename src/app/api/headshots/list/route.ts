@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Add cache control headers to allow browser caching
+    const headers = new Headers();
+    headers.append("Cache-Control", "private, max-age=300"); // 5 minutes
+
     // Get all headshots for the user, ordered by most recent first
     const { data, error } = await supabase
       .from("user_headshots")
@@ -40,10 +44,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      headshots: data || [],
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        headshots: data || [],
+        timestamp: Date.now(),
+      },
+      { headers },
+    );
   } catch (error) {
     console.error("Error in list headshots API:", error);
     return NextResponse.json(

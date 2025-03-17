@@ -95,7 +95,9 @@ export default function PricingCard({
         </CardTitle>
         <CardDescription className="flex items-baseline gap-2 mt-2">
           <span className="text-4xl font-bold text-gray-900">
-            ${item?.prices?.[0]?.priceAmount / 100}
+            {item?.prices?.[0]?.priceAmount
+              ? `${item?.prices?.[0]?.priceAmount / 100}`
+              : "Free"}
           </span>
           <span className="text-gray-600">/month</span>
         </CardDescription>

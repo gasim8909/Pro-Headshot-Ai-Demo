@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "../../../supabase/server";
 import { manageSubscriptionAction } from "../actions";
 import { Suspense } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UserHeadshotHistory from "@/components/user-headshot-history";
 import Footer from "@/components/footer";
@@ -23,35 +24,66 @@ export default async function Dashboard() {
     return redirect("/sign-in");
   }
 
+  // Store user data in sessionStorage for client components to use
+  // This is done server-side during the initial page load
+  // and will be available to all client components
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.setItem(
+        "current-user",
+        JSON.stringify({
+          id: user.id,
+          email: user.email,
+          timestamp: Date.now(),
+        }),
+      );
+    } catch (e) {
+      console.error("Failed to store user in sessionStorage", e);
+    }
+  }
+
   const result = await manageSubscriptionAction(user?.id);
 
   if (!result) {
     return redirect("/pricing");
   }
 
-  // Fetch subscription details
+  // We'll fetch subscription details only once during initial page load
+  // and store them in sessionStorage for client components to use
+  let subscriptionDetails = null;
+
+  // Fetch subscription details - first check user's subscription field
   const { data: userData } = await supabase
     .from("users")
-    .select("subscription")
-    .eq("user_id", user.id)
+    .select("subscription, subscription_tier")
+    .eq("id", user.id)
     .single();
 
-  let subscriptionDetails = null;
+  console.log("User data for subscription details:", userData);
+
   if (userData?.subscription) {
+    // Get subscription by polar_id
     const { data: subData } = await supabase
       .from("subscriptions")
       .select("*")
       .eq("polar_id", userData.subscription)
       .single();
 
-    subscriptionDetails = subData;
-    console.log("Subscription details from user.subscription:", {
-      polar_id: subscriptionDetails?.polar_id,
-      status: subscriptionDetails?.status,
-      price_id: subscriptionDetails?.polar_price_id,
-    });
-  } else {
-    // Fallback to checking subscriptions table directly
+    if (subData) {
+      subscriptionDetails = subData;
+      console.log("Subscription details from user.subscription:", {
+        polar_id: subscriptionDetails?.polar_id,
+        status: subscriptionDetails?.status,
+        price_id: subscriptionDetails?.polar_price_id,
+        created_at: subscriptionDetails?.created_at,
+        current_period_end: subscriptionDetails?.current_period_end,
+        cancel_at: subscriptionDetails?.cancel_at,
+      });
+    }
+  }
+
+  // If no subscription found via polar_id, check directly by user_id
+  if (!subscriptionDetails) {
     const { data: subs } = await supabase
       .from("subscriptions")
       .select("*")
@@ -64,6 +96,9 @@ export default async function Dashboard() {
         polar_id: subscriptionDetails?.polar_id,
         status: subscriptionDetails?.status,
         price_id: subscriptionDetails?.polar_price_id,
+        created_at: subscriptionDetails?.created_at,
+        current_period_end: subscriptionDetails?.current_period_end,
+        cancel_at: subscriptionDetails?.cancel_at,
       });
     }
   }
@@ -194,7 +229,28 @@ export default async function Dashboard() {
                   <h2 className="text-xl font-semibold mb-4">
                     Generation History
                   </h2>
-                  <UserHeadshotHistory userId={user.id} />
+                  <Suspense
+                    fallback={
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {[1, 2, 3, 4, 5, 6].map((_, index) => (
+                            <Card
+                              key={index}
+                              className="overflow-hidden animate-pulse"
+                            >
+                              <div className="aspect-[3/4] relative bg-gray-200"></div>
+                              <CardContent className="p-4">
+                                <div className="h-4 w-3/4 mb-2 bg-gray-200 rounded animate-pulse"></div>
+                                <div className="h-4 w-1/2 bg-gray-200 rounded animate-pulse"></div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    }
+                  >
+                    <UserHeadshotHistory userId={user.id} />
+                  </Suspense>
                 </div>
               </TabsContent>
 

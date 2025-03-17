@@ -49,8 +49,20 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [subscriptionData, setSubscriptionData] =
     useState<SubscriptionContextType>(defaultContext);
 
-  const refreshSubscription = async () => {
+  const refreshSubscription = async (forceRefresh = false) => {
     setSubscriptionData((prev) => ({ ...prev, isLoading: true }));
+
+    // Clear cache if force refresh is requested
+    if (forceRefresh) {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+
+      if (user) {
+        sessionStorage.removeItem(`subscription-${user.id}`);
+        console.log("Cleared subscription cache for force refresh");
+      }
+    }
 
     try {
       const supabase = createClient();
@@ -67,14 +79,34 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // First check the user's subscription field directly
+      // First check the user's subscription_tier field directly
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("subscription")
-        .eq("user_id", user.id)
+        .select("subscription, subscription_tier")
+        .eq("id", user.id)
         .single();
 
-      // If user has a subscription field set, they have an active subscription
+      console.log("User data from context:", userData);
+
+      // If user has a subscription_tier field set, use that directly
+      if (!userError && userData && userData.subscription_tier) {
+        const tier = userData.subscription_tier as SubscriptionTier;
+        console.log("Using subscription_tier from user data:", tier);
+
+        setSubscriptionData({
+          tier,
+          isLoading: false,
+          isSubscribed: tier !== "free",
+          maxGenerations: tier === "pro" ? 100 : tier === "premium" ? 25 : 5,
+          maxUploads: tier === "pro" ? 10 : tier === "premium" ? 5 : 3,
+          hasAdvancedStyles: tier !== "free",
+          hasHistoryAccess: tier !== "free",
+          refreshSubscription,
+        });
+        return;
+      }
+
+      // If user has a subscription field set but no tier, check subscription details
       if (!userError && userData && userData.subscription) {
         // Get subscription details from subscriptions table
         const { data: subData, error: subError } = await supabase
@@ -89,10 +121,25 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
           // Example logic - adjust based on your actual price IDs
           const priceId = subData.polar_price_id;
+          console.log("Subscription price ID:", priceId);
+
           if (priceId && priceId.toLowerCase().includes("pro")) {
             tier = "pro";
           } else if (priceId && priceId.toLowerCase().includes("premium")) {
             tier = "premium";
+          }
+
+          console.log("Determined tier from subscription:", tier);
+
+          // Update the user's subscription_tier in the database
+          try {
+            await supabase
+              .from("users")
+              .update({ subscription_tier: tier })
+              .eq("id", user.id);
+            console.log("Updated user's subscription_tier to:", tier);
+          } catch (updateError) {
+            console.error("Error updating subscription_tier:", updateError);
           }
 
           setSubscriptionData({
@@ -156,6 +203,17 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           tier = "premium";
         }
 
+        // Update the user's subscription_tier in the database
+        try {
+          await supabase
+            .from("users")
+            .update({ subscription_tier: tier })
+            .eq("id", user.id);
+          console.log("Updated user's subscription_tier to:", tier);
+        } catch (updateError) {
+          console.error("Error updating subscription_tier:", updateError);
+        }
+
         // Set subscription features based on tier
         setSubscriptionData({
           tier,
@@ -191,6 +249,38 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
     const fetchFromApi = async () => {
       try {
+        // Check for cached subscription data in sessionStorage
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        const user = data?.user;
+
+        if (user && typeof window !== "undefined") {
+          try {
+            const cachedSubscription = sessionStorage.getItem(
+              `subscription-${user.id}`,
+            );
+            if (cachedSubscription) {
+              const { data, timestamp } = JSON.parse(cachedSubscription);
+              const cacheAge = Date.now() - timestamp;
+
+              // Use cache if it's less than 5 minutes old
+              if (cacheAge < 5 * 60 * 1000 && isMounted) {
+                console.log("Using cached subscription data");
+                setSubscriptionData({
+                  ...data,
+                  isLoading: false,
+                  refreshSubscription,
+                });
+                return;
+              }
+            }
+          } catch (e) {
+            console.error("Error accessing sessionStorage:", e);
+          }
+        }
+
+        // If no valid cache, fetch from API
+        console.log("Fetching subscription from API");
         const response = await fetch("/api/subscription/status");
         if (response.ok && isMounted) {
           const data = await response.json();
@@ -199,6 +289,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             isLoading: false,
             refreshSubscription,
           });
+
+          // Cache the subscription data if user is logged in
+          if (user && typeof window !== "undefined") {
+            try {
+              sessionStorage.setItem(
+                `subscription-${user.id}`,
+                JSON.stringify({
+                  data,
+                  timestamp: Date.now(),
+                }),
+              );
+            } catch (e) {
+              console.error("Error writing to sessionStorage:", e);
+            }
+          }
         } else if (isMounted) {
           // If API fails, fall back to direct DB check
           refreshSubscription();
@@ -211,10 +316,23 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    fetchFromApi();
+    // Only run on client-side
+    if (typeof window !== "undefined") {
+      fetchFromApi();
+    } else {
+      // Set default values for server-side rendering
+      setSubscriptionData({
+        ...defaultContext,
+        isLoading: false,
+        refreshSubscription,
+      });
+    }
 
     // Set up realtime subscription to listen for changes
     const setupRealtimeSubscription = async () => {
+      // Only run on client-side
+      if (typeof window === "undefined") return () => {};
+
       const supabase = createClient();
       const { data } = await supabase.auth.getUser();
       const user = data?.user;
@@ -272,9 +390,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
     let cleanupFn: (() => void) | undefined;
 
-    setupRealtimeSubscription().then((fn) => {
-      cleanupFn = fn;
-    });
+    if (typeof window !== "undefined") {
+      setupRealtimeSubscription().then((fn) => {
+        cleanupFn = fn;
+      });
+    }
 
     return () => {
       isMounted = false;

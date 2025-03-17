@@ -46,7 +46,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate style
-    const validStyles = ["professional", "creative", "casual"];
+    const validStyles = [
+      "professional",
+      "creative",
+      "casual",
+      "modern",
+      "executive",
+      "business",
+      "corporate",
+      "artistic",
+      "minimalist",
+      "outdoor",
+    ];
     if (style && !validStyles.includes(style)) {
       return NextResponse.json(
         {
@@ -127,6 +138,18 @@ export async function POST(request: NextRequest) {
         );
       } catch (geminiError) {
         console.error("Error processing images with Gemini API:", geminiError);
+
+        // Provide more detailed logging based on error type
+        if (geminiError.message && geminiError.message.includes("429")) {
+          console.error(
+            "Rate limit exceeded (429 error). The Gemini API quota has been exhausted.",
+          );
+        } else if (geminiError.message && geminiError.message.includes("500")) {
+          console.error(
+            "Gemini API internal server error (500). This is likely a temporary issue with the API.",
+          );
+        }
+
         console.log("Falling back to mock data due to Gemini API error");
 
         // Fall back to mock data if Gemini API fails
@@ -140,9 +163,17 @@ export async function POST(request: NextRequest) {
 
     // If we don't have generated images yet (Gemini failed or not enabled), use mock data
     if (!generatedImages) {
+      console.log(`Using mock data for style: ${style}`);
+
       // Get the appropriate style images from our config
       const styleImages =
         MOCK_DATA.STYLES[style] || MOCK_DATA.STYLES.professional;
+
+      if (!MOCK_DATA.STYLES[style]) {
+        console.warn(
+          `Style "${style}" not found in mock data, falling back to professional style`,
+        );
+      }
 
       // Ensure we're using high-quality images with proper parameters
       const processedImages = styleImages.map((url) => {

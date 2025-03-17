@@ -17,6 +17,7 @@ export default function SubscriptionBadge() {
     maxGenerations,
     maxUploads,
     hasAdvancedStyles,
+    refreshSubscription,
   } = useSubscription();
 
   const getBadgeStyle = () => {
@@ -28,15 +29,28 @@ export default function SubscriptionBadge() {
         return "bg-gradient-to-r from-amber-200 to-amber-400 text-amber-900 hover:from-amber-300 hover:to-amber-500";
       case "pro":
         return "bg-gradient-to-r from-purple-400 to-blue-500 text-white hover:from-purple-500 hover:to-blue-600";
+      case "free":
+        return "bg-gray-100 text-gray-800 hover:bg-gray-200";
       default:
+        // If tier is undefined or invalid, force a refresh of subscription data
+        if (tier === undefined || tier === null || tier === "") {
+          setTimeout(() => {
+            // Use the refreshSubscription from the outer scope
+            if (refreshSubscription) refreshSubscription(true);
+          }, 500);
+        }
+        console.warn("Unknown tier value:", tier);
         return "bg-gray-100 text-gray-800 hover:bg-gray-200";
     }
   };
 
   if (isLoading) {
     return (
-      <Badge variant="outline" className="animate-pulse">
-        Loading...
+      <Badge
+        variant="outline"
+        className="animate-pulse bg-gray-200 text-transparent"
+      >
+        Loading subscription data...
       </Badge>
     );
   }

@@ -26,12 +26,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // First check the user's subscription field directly
+    // Add cache control headers to allow browser caching
+    const headers = new Headers();
+    headers.append("Cache-Control", "private, max-age=300"); // 5 minutes
+
+    // First check the user's subscription_tier field directly
     const { data: userData, error: userError2 } = await supabase
       .from("users")
-      .select("subscription")
-      .eq("user_id", user.id)
+      .select("subscription, subscription_tier, id")
+      .eq("id", user.id)
       .single();
+
+    console.log("User data from API:", userData);
+
+    // If user has a subscription_tier field set, use that directly
+    if (!userError2 && userData && userData.subscription_tier) {
+      const tier = userData.subscription_tier;
+      console.log("Using subscription_tier from user data:", tier);
+
+      return NextResponse.json(
+        {
+          tier,
+          isSubscribed: tier !== "free",
+          maxGenerations: tier === "pro" ? 100 : tier === "premium" ? 25 : 5,
+          maxUploads: tier === "pro" ? 10 : tier === "premium" ? 5 : 3,
+          hasAdvancedStyles: tier !== "free",
+          hasHistoryAccess: tier !== "free",
+        },
+        { headers },
+      );
+    }
 
     // Then get user's subscription details
     let subscriptions = [];
@@ -47,6 +71,29 @@ export async function GET(request: NextRequest) {
 
       if (!subErr && subData) {
         subscriptions = [subData];
+
+        // Determine tier based on subscription data
+        const priceId = subData.polar_price_id;
+        let tier = "premium"; // Default to premium if we have a subscription
+
+        if (priceId && priceId.toLowerCase().includes("pro")) {
+          tier = "pro";
+        } else if (priceId && priceId.toLowerCase().includes("premium")) {
+          tier = "premium";
+        }
+
+        console.log("Determined tier from subscription:", tier);
+
+        // Update the user's subscription_tier in the database
+        try {
+          await supabase
+            .from("users")
+            .update({ subscription_tier: tier })
+            .eq("id", user.id);
+          console.log("Updated user's subscription_tier to:", tier);
+        } catch (updateError) {
+          console.error("Error updating subscription_tier:", updateError);
+        }
       } else {
         subError = subErr;
       }
@@ -105,28 +152,45 @@ export async function GET(request: NextRequest) {
             tier = "premium";
           }
         }
+
+        // Update the user's subscription_tier in the database
+        try {
+          await supabase
+            .from("users")
+            .update({ subscription_tier: tier })
+            .eq("id", user.id);
+          console.log("Updated user's subscription_tier to:", tier);
+        } catch (updateError) {
+          console.error("Error updating subscription_tier:", updateError);
+        }
       }
 
       // Return subscription details
-      return NextResponse.json({
-        tier,
-        isSubscribed: true,
-        maxGenerations: tier === "pro" ? 100 : tier === "premium" ? 25 : 5,
-        maxUploads: tier === "pro" ? 10 : tier === "premium" ? 5 : 3,
-        hasAdvancedStyles: tier !== "free",
-        hasHistoryAccess: tier !== "free",
-        subscription: subscription,
-      });
+      return NextResponse.json(
+        {
+          tier,
+          isSubscribed: subscription.status === "active",
+          maxGenerations: tier === "pro" ? 100 : tier === "premium" ? 25 : 5,
+          maxUploads: tier === "pro" ? 10 : tier === "premium" ? 5 : 3,
+          hasAdvancedStyles: tier !== "free",
+          hasHistoryAccess: tier !== "free",
+          subscription: subscription,
+        },
+        { headers },
+      );
     } else {
       // No active subscription - free tier
-      return NextResponse.json({
-        tier: "free",
-        isSubscribed: false,
-        maxGenerations: 5,
-        maxUploads: 3,
-        hasAdvancedStyles: false,
-        hasHistoryAccess: false,
-      });
+      return NextResponse.json(
+        {
+          tier: "free",
+          isSubscribed: false,
+          maxGenerations: 5,
+          maxUploads: 3,
+          hasAdvancedStyles: false,
+          hasHistoryAccess: false,
+        },
+        { headers },
+      );
     }
   } catch (error) {
     console.error("Error checking subscription status:", error);

@@ -16,6 +16,7 @@ import {
 import { Upload, Image as ImageIcon, Loader2, Save } from "lucide-react";
 import { User } from "@supabase/supabase-js";
 import Link from "next/link";
+import { ErrorMessage } from "./error-message";
 
 export default function UploadForm({ user }: { user?: User | null }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -25,6 +26,11 @@ export default function UploadForm({ user }: { user?: User | null }) {
   const [style, setStyle] = useState("professional");
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [isGenerated, setIsGenerated] = useState(false);
+  const [error, setError] = useState<{
+    title: string;
+    message: string;
+    severity: "error" | "warning" | "info";
+  } | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -42,21 +48,168 @@ export default function UploadForm({ user }: { user?: User | null }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
 
-    // Simulate processing time
-    setTimeout(() => {
-      // Mock generated images
-      const mockGeneratedImages = [
-        "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=500&q=80",
-        "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=500&q=80",
-        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=500&q=80",
-        "https://images.unsplash.com/photo-1573497019236-61e7a0081f95?w=500&q=80",
-      ];
+    try {
+      // Validate files
+      if (files.length === 0) {
+        setError({
+          title: "No files selected",
+          message: "Please select at least one photo to generate headshots.",
+          severity: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
 
-      setGeneratedImages(mockGeneratedImages);
+      // Check file sizes
+      const oversizedFiles = files.filter(
+        (file) => file.size > 10 * 1024 * 1024,
+      );
+      if (oversizedFiles.length > 0) {
+        setError({
+          title: "Files too large",
+          message: `${oversizedFiles.length} file(s) exceed the 10MB limit. Please select smaller files.`,
+          severity: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Create form data to send to API
+      const formData = new FormData();
+
+      // Add all files to form data
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      // Add prompt and style to form data
+      formData.append("prompt", prompt);
+      formData.append("style", style);
+      formData.append("userId", user?.id || "guest");
+
+      // Send to our Next.js API endpoint
+      console.log("Sending request to API endpoint");
+      const origin =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "http://localhost:3000";
+
+      // Show a more detailed loading message
+      setError({
+        title: "Processing Images",
+        message:
+          "Uploading and processing your images. This may take a moment...",
+        severity: "info",
+      });
+
+      // Use the Supabase edge function directly for more reliable processing
+      const response = await fetch(`${origin}/api/generate`, {
+        method: "POST",
+        body: formData,
+      });
+      console.log("Received response from API endpoint:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message || `API responded with status: ${response.status}`,
+        );
+      }
+
+      // Clear the info message
+      setError(null);
+
+      const data = await response.json();
+      console.log("Processing result:", {
+        source: data?.source || "unknown",
+        serverUrl: data?.serverUrl || "unknown",
+        imageCount: data?.images?.length || 0,
+      });
+
+      // Check if we have images
+      if (!data.images || data.images.length === 0) {
+        throw new Error("No images were generated. Please try again.");
+      }
+
+      // Validate image URLs before setting them
+      const validImages = data.images.filter((img) => {
+        // Check if it's a valid URL or base64 string
+        return (
+          typeof img === "string" &&
+          (img.startsWith("http") || img.startsWith("data:image"))
+        );
+      });
+
+      console.log("Valid images count:", validImages.length);
+      console.log(
+        "First image format check:",
+        validImages[0]?.substring(0, 30) + "...",
+      );
+
+      if (validImages.length === 0) {
+        throw new Error("The generated images were invalid. Please try again.");
+      }
+
+      // Set the generated images from the API response
+      setGeneratedImages(validImages);
       setIsGenerated(true);
+
+      // If we're using mock data, show an informative message (not an error)
+      if (data?.source === "mock-data" || data?.demoMode) {
+        console.log("Using sample images in demo mode");
+        // In demo mode, we don't show an alert as this is expected behavior
+        if (data?.error && !data?.demoMode) {
+          setError({
+            title: "Demo Mode Active",
+            message:
+              "Using sample images for demonstration. In a production environment, your photos would be processed by AI.",
+            severity: "info",
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Error generating images:", err);
+
+      // Determine the type of error and set appropriate message
+      if (
+        err.message.includes("NetworkError") ||
+        err.message.includes("Failed to fetch")
+      ) {
+        setError({
+          title: "Network Error",
+          message:
+            "Unable to connect to the server. Please check your internet connection and try again.",
+          severity: "error",
+        });
+      } else if (err.message.includes("timeout")) {
+        setError({
+          title: "Request Timeout",
+          message:
+            "The server took too long to respond. Please try again later.",
+          severity: "error",
+        });
+      } else if (
+        err.message.includes("413") ||
+        err.message.includes("Payload Too Large")
+      ) {
+        setError({
+          title: "Files Too Large",
+          message:
+            "The total size of your uploaded files is too large. Please try with fewer or smaller images.",
+          severity: "error",
+        });
+      } else {
+        setError({
+          title: "Generation Failed",
+          message: `Unable to generate headshots: ${err.message}. Please try again or contact support if the issue persists.`,
+          severity: "error",
+        });
+      }
+    } finally {
       setIsLoading(false);
-    }, 3000);
+    }
   };
 
   const handleReset = () => {
@@ -148,6 +301,14 @@ export default function UploadForm({ user }: { user?: User | null }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {error && (
+          <ErrorMessage
+            title={error.title}
+            message={error.message}
+            severity={error.severity}
+            className="mb-6"
+          />
+        )}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="photos">Upload Photos</Label>

@@ -1,6 +1,7 @@
 import DashboardNavbar from "@/components/dashboard-navbar";
 import ManageSubscription from "@/components/manage-subscription";
 import { SubscriptionCheck } from "@/components/subscription-check";
+import GeminiStatusIndicator from "@/components/gemini-status-indicator";
 import {
   InfoIcon,
   UserCircle,
@@ -38,8 +39,11 @@ export default async function Dashboard() {
       <DashboardNavbar />
       <main className="w-full pt-16">
         <div className="container mx-auto px-4 py-8 flex flex-col gap-8">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold">AI Headshot Dashboard</h1>
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">AI Headshot Dashboard</h1>
+              <GeminiStatusIndicator />
+            </div>
             <Suspense fallback={<div>Loading...</div>}>
               {result?.url && <ManageSubscription redirectUrl={result?.url!} />}
             </Suspense>

@@ -5,6 +5,7 @@ import Footer from "@/components/footer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import Link from "next/link";
+import GeminiStatusIndicator from "@/components/gemini-status-indicator";
 
 export default async function GeneratePage() {
   const supabase = await createClient();
@@ -16,9 +17,12 @@ export default async function GeneratePage() {
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
       <DashboardNavbar />
       <div className="container mx-auto px-4 py-12">
-        <h1 className="text-3xl font-bold text-center mb-8">
-          Generate AI Headshots
-        </h1>
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-center sm:text-left">
+            Generate AI Headshots
+          </h1>
+          <GeminiStatusIndicator />
+        </div>
 
         {!user && (
           <Alert className="mb-8 border-blue-200 bg-blue-50">

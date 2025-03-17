@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Download, Share2 } from "lucide-react";
@@ -10,9 +10,7 @@ type HeadshotProps = {
 };
 
 export default function HeadshotGallery({ images = [] }: HeadshotProps) {
-  const [selectedImage, setSelectedImage] = useState<string | null>(
-    images.length > 0 ? images[0] : null,
-  );
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // If no images are provided, use these defaults
   const defaultImages = [
@@ -22,7 +20,26 @@ export default function HeadshotGallery({ images = [] }: HeadshotProps) {
     "https://images.unsplash.com/photo-1573497019236-61e7a0081f95?w=500&q=80",
   ];
 
-  const displayImages = images.length > 0 ? images : defaultImages;
+  // Filter out any invalid image URLs
+  const validImages = images.filter(
+    (img) =>
+      typeof img === "string" &&
+      (img.startsWith("http") || img.startsWith("data:image")),
+  );
+
+  // Log validation results for debugging
+  console.log("HeadshotGallery received images:", images.length);
+  console.log("Valid images after filtering:", validImages.length);
+
+  const displayImages = validImages.length > 0 ? validImages : defaultImages;
+
+  // Set selected image if not already set
+  useEffect(() => {
+    if (!selectedImage && displayImages.length > 0) {
+      setSelectedImage(displayImages[0]);
+    }
+  }, [displayImages, selectedImage]);
+
   const currentImage =
     selectedImage || (displayImages.length > 0 ? displayImages[0] : null);
 

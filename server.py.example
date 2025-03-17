@@ -1,0 +1,93 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import base64
+import io
+import os
+import time
+from PIL import Image
+
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+
+# This is a simple example of a Python server that processes images
+# In a real application, you would integrate with an AI model here
+
+@app.route('/status', methods=['GET'])
+def status():
+    """Check if the server is running"""
+    return jsonify({
+        'status': 'running',
+        'version': '1.0.0',
+        'ready': True,
+        'message': 'Python server is running and ready to process images'
+    })
+
+@app.route('/process', methods=['POST'])
+def process_images():
+    """Process images and return the results"""
+    try:
+        # Get the request data
+        data = request.json
+        
+        if not data or 'images' not in data:
+            return jsonify({
+                'error': 'No images provided',
+                'message': 'Please provide at least one image to process'
+            }), 400
+        
+        # Extract data from the request
+        images = data.get('images', [])
+        prompt = data.get('prompt', '')
+        style = data.get('style', 'professional')
+        user_id = data.get('userId', 'guest')
+        
+        print(f"Received request to process {len(images)} images with style: {style}")
+        print(f"Prompt: {prompt}")
+        print(f"User ID: {user_id}")
+        
+        # Process each image
+        processed_images = []
+        for i, img_data in enumerate(images):
+            # In a real application, you would process the image with an AI model here
+            # For this example, we'll just simulate processing by waiting
+            time.sleep(1)  # Simulate processing time
+            
+            # Get the image content from base64
+            try:
+                image_content = base64.b64decode(img_data['content'])
+                
+                # Open the image with PIL
+                img = Image.open(io.BytesIO(image_content))
+                
+                # In a real application, you would process the image with an AI model here
+                # For this example, we'll just convert it to base64 and return it
+                buffered = io.BytesIO()
+                img.save(buffered, format="JPEG")
+                processed_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                
+                processed_images.append(processed_image)
+            except Exception as e:
+                print(f"Error processing image {i}: {str(e)}")
+                # Return a placeholder image or error
+                processed_images.append(None)
+        
+        # Return the processed images
+        return jsonify({
+            'images': processed_images,
+            'style': style,
+            'message': f'Successfully processed {len(processed_images)} images with style: {style}'
+        })
+    except Exception as e:
+        print(f"Error processing request: {str(e)}")
+        return jsonify({
+            'error': 'Failed to process images',
+            'message': str(e)
+        }), 500
+
+if __name__ == '__main__':
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=port, debug=True)
+    print(f"Server running on port {port}")

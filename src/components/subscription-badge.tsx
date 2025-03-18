@@ -8,38 +8,57 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
+import { useEffect, useState } from "react";
 
 export default function SubscriptionBadge() {
-  const {
-    tier,
-    isLoading,
-    isSubscribed,
-    maxGenerations,
-    maxUploads,
-    hasAdvancedStyles,
-    refreshSubscription,
-  } = useSubscription();
+  // Use local state to prevent SSR issues
+  const [subscriptionData, setSubscriptionData] = useState({
+    tier: "free", // Default to free tier
+    isLoading: true,
+    maxGenerations: 4,
+    maxUploads: 10,
+    hasAdvancedStyles: false,
+  });
+
+  // Get subscription data on client-side only
+  useEffect(() => {
+    try {
+      const subscription = useSubscription();
+      console.log("Subscription data in badge:", subscription);
+
+      // Always ensure we have a tier value
+      const updatedSubscription = {
+        ...subscription,
+        tier: subscription.tier || "free",
+      };
+
+      setSubscriptionData(updatedSubscription);
+    } catch (error) {
+      console.error("Error getting subscription data:", error);
+      // On error, ensure we still have a valid tier
+      setSubscriptionData((prev) => ({
+        ...prev,
+        tier: "free",
+        isLoading: false,
+      }));
+    }
+  }, []);
+
+  const { tier, isLoading, maxGenerations, maxUploads, hasAdvancedStyles } =
+    subscriptionData;
 
   const getBadgeStyle = () => {
-    // Log the current tier for debugging
-    console.log("Current subscription tier in badge:", tier);
+    // Use a safe tier value that defaults to "free"
+    const safeTier = tier || "free";
+    console.log("Current subscription tier in badge:", safeTier);
 
-    switch (tier) {
+    switch (safeTier) {
       case "premium":
         return "bg-gradient-to-r from-amber-200 to-amber-400 text-amber-900 hover:from-amber-300 hover:to-amber-500";
       case "pro":
         return "bg-gradient-to-r from-purple-400 to-blue-500 text-white hover:from-purple-500 hover:to-blue-600";
       case "free":
-        return "bg-gray-100 text-gray-800 hover:bg-gray-200";
       default:
-        // If tier is undefined or invalid, force a refresh of subscription data
-        if (tier === undefined || tier === null || tier === "") {
-          setTimeout(() => {
-            // Use the refreshSubscription from the outer scope
-            if (refreshSubscription) refreshSubscription(true);
-          }, 500);
-        }
-        console.warn("Unknown tier value:", tier);
         return "bg-gray-100 text-gray-800 hover:bg-gray-200";
     }
   };
@@ -55,35 +74,63 @@ export default function SubscriptionBadge() {
     );
   }
 
+  // Ensure we have a valid tier for display
+  const displayTier = tier || "free";
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Badge className={`${getBadgeStyle()} cursor-help font-medium`}>
-            {tier.charAt(0).toUpperCase() + tier.slice(1)} Plan
+            {displayTier.charAt(0).toUpperCase() + displayTier.slice(1)} Plan
           </Badge>
         </TooltipTrigger>
         <TooltipContent className="w-64 p-3">
           <div className="space-y-2">
             <p className="font-semibold">
-              {tier.charAt(0).toUpperCase() + tier.slice(1)} Tier Features:
+              {displayTier.charAt(0).toUpperCase() + displayTier.slice(1)} Tier
+              Features:
             </p>
             <ul className="text-sm space-y-1">
-              <li>• {maxGenerations} headshot generations per month</li>
-              <li>• Up to {maxUploads} photos per upload</li>
+              <li>• {maxGenerations} headshot variations per upload</li>
               <li>
                 •{" "}
-                {hasAdvancedStyles
-                  ? "Access to all style options"
-                  : "Basic style options only"}
+                {displayTier === "guest"
+                  ? "5 lifetime uploads"
+                  : displayTier === "pro"
+                    ? "100 uploads/month"
+                    : displayTier === "premium"
+                      ? "30 uploads/month"
+                      : "10 uploads/month"}
               </li>
               <li>
                 •{" "}
-                {tier !== "free"
-                  ? "History tracking and storage"
-                  : "No history tracking"}
+                {displayTier === "guest"
+                  ? "Professional style only"
+                  : displayTier === "free"
+                    ? "3 professional styles"
+                    : displayTier === "premium"
+                      ? "8 professional styles"
+                      : "10+ professional styles"}
               </li>
-              {tier === "pro" && <li>• Priority processing</li>}
+              {displayTier !== "guest" && displayTier !== "free" && (
+                <li>
+                  •{" "}
+                  {displayTier === "premium"
+                    ? "Open custom prompting"
+                    : displayTier === "pro"
+                      ? "Advanced AI parameters"
+                      : "Basic prompting"}
+                </li>
+              )}
+              <li>
+                •{" "}
+                {displayTier === "pro"
+                  ? "Personal account manager"
+                  : displayTier === "premium"
+                    ? "Priority email support"
+                    : "Community support"}
+              </li>
             </ul>
           </div>
         </TooltipContent>

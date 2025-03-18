@@ -12,6 +12,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UserHeadshotHistory from "@/components/user-headshot-history";
 import Footer from "@/components/footer";
 import SubscriptionBadge from "@/components/subscription-badge";
+import dynamic from "next/dynamic";
+
+// Dynamically import the UpdateSubscriptionForm component
+const UpdateSubscriptionForm = dynamic(
+  () => import("@/components/update-subscription-form"),
+  { ssr: false },
+);
+
+// Import the UserSessionStorage component
+const UserSessionStorage = dynamic(
+  () => import("@/components/user-session-storage"),
+  { ssr: false },
+);
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -24,29 +37,13 @@ export default async function Dashboard() {
     return redirect("/sign-in");
   }
 
-  // Store user data in sessionStorage for client components to use
-  // This is done server-side during the initial page load
-  // and will be available to all client components
-  if (typeof window !== "undefined") {
-    try {
-      sessionStorage.setItem(
-        "current-user",
-        JSON.stringify({
-          id: user.id,
-          email: user.email,
-          timestamp: Date.now(),
-        }),
-      );
-    } catch (e) {
-      console.error("Failed to store user in sessionStorage", e);
-    }
-  }
+  // We should not attempt to access browser APIs like sessionStorage in a server component
+  // This will be handled by client components that need the user data
 
   const result = await manageSubscriptionAction(user?.id);
 
-  if (!result) {
-    return redirect("/pricing");
-  }
+  // Allow access even if there's no subscription result
+  // This ensures free users can access the dashboard
 
   // We'll fetch subscription details only once during initial page load
   // and store them in sessionStorage for client components to use
@@ -104,8 +101,10 @@ export default async function Dashboard() {
   }
 
   return (
-    <SubscriptionCheck>
+    <SubscriptionCheck requireSubscription={false}>
       <div className="min-h-screen flex flex-col">
+        {/* Client component to safely store user data in sessionStorage */}
+        <UserSessionStorage userId={user.id} userEmail={user.email} />
         <DashboardNavbar />
         <main className="w-full pt-24 flex-grow">
           <div className="container mx-auto px-4 py-8 flex flex-col gap-8">
@@ -273,6 +272,22 @@ export default async function Dashboard() {
                         )}
                       </Suspense>
                     </div>
+
+                    {/* Add the update subscription form */}
+                    <div className="mt-4">
+                      <Suspense
+                        fallback={
+                          <div className="p-4 bg-muted/30 rounded-lg animate-pulse">
+                            Loading update form...
+                          </div>
+                        }
+                      >
+                        <div className="dynamic-import-wrapper">
+                          <UpdateSubscriptionForm />
+                        </div>
+                      </Suspense>
+                    </div>
+
                     <div className="p-4 bg-muted/30 rounded-lg">
                       <p className="font-medium mb-2">Subscription Period</p>
                       <div className="grid grid-cols-2 gap-4 text-sm">

@@ -58,7 +58,9 @@ export default async function Navbar() {
           {user ? (
             <>
               {/* Use client-side only UserProfile component */}
-              <UserProfile />
+              <div className="client-only-wrapper">
+                <UserProfile />
+              </div>
             </>
           ) : (
             <>

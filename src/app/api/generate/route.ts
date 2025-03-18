@@ -2,24 +2,128 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { GEMINI_CONFIG, MOCK_DATA, TIMEOUTS } from "@/lib/config";
 import { processImages } from "@/lib/gemini";
+import { getGenerationPrompt } from "./prompt-helper";
+import { StyleId } from "@/lib/ai-style-prompts";
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
+
+    // Get auth token from request headers - check both standard and custom header
+    const authHeader = request.headers.get("authorization");
+    const customAuthHeader = request.headers.get("x-supabase-auth");
+
+    // Try to get token from either header
+    let token = null;
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+      console.log("Found token in Authorization header");
+    } else if (customAuthHeader) {
+      token = customAuthHeader;
+      console.log("Found token in X-Supabase-Auth header");
+    }
+
+    console.log("Auth token present:", !!token);
+
+    // Create client with auth token if available
     const supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+        auth: {
+          persistSession: false, // Don't persist the session to avoid cookie issues
+          autoRefreshToken: false, // Don't auto refresh the token
+        },
+      },
     );
 
+    // Create a service role client for admin operations
+    const serviceClient = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!,
+    );
+
+    // Default number of images to generate (for free tier)
+    let numImagesToGenerate = 4;
+
     // Get user information if logged in
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    let user = null;
+    let userError = null;
+    let userId = null;
+
+    if (token) {
+      try {
+        // First try with the standard auth method
+        const { data, error } = await supabase.auth.getUser(token);
+        user = data?.user;
+        userError = error;
+
+        if (user) {
+          userId = user.id;
+          console.log("Successfully authenticated user with ID:", userId);
+        } else if (error) {
+          console.error("Error authenticating with token:", error.message);
+
+          // If standard auth fails, try to decode the JWT to at least get the user ID
+          try {
+            // Basic JWT parsing (get payload part and decode)
+            const parts = token.split(".");
+            if (parts.length === 3) {
+              const payload = JSON.parse(
+                Buffer.from(parts[1], "base64").toString(),
+              );
+              if (payload.sub) {
+                userId = payload.sub;
+                console.log("Extracted user ID from JWT payload:", userId);
+              }
+            }
+          } catch (jwtError) {
+            console.error("Error parsing JWT:", jwtError);
+          }
+        }
+      } catch (error) {
+        console.error("Error getting user with token:", error);
+        userError = error;
+      }
+    }
+
+    if (userError) {
+      console.error("Error getting user:", userError);
+    }
+
+    // Log detailed authentication information
+    console.log(
+      `API route - User authenticated: ${!!user}, User ID: ${user?.id || "guest"}, Auth token present: ${!!request.headers.get("authorization")}`,
+    );
+
+    // If we have a token but no user, log a warning
+    if (request.headers.get("authorization") && !user) {
+      console.warn(
+        "Auth token is present but user is not authenticated - token may be invalid or expired",
+      );
+    }
 
     // Extract files and prompt from form data
     const files = formData.getAll("files") as File[];
-    const prompt = formData.get("prompt") as string;
-    const style = formData.get("style") as string;
+    const userPrompt = formData.get("prompt") as string;
+    const style = formData.get("style") as StyleId;
+    const formUserId = formData.get("userId") as string;
+    const formTier = formData.get("tier") as string;
+
+    // Use the authenticated userId if available, otherwise fall back to the form userId
+    // This ensures we prioritize the authenticated user ID over what's in the form
+    if (!userId && formUserId && formUserId !== "guest") {
+      userId = formUserId;
+      console.log("Using user ID from form data:", userId);
+    }
+
+    // Double-check user authentication
+    console.log(
+      `Form data userId: ${formUserId}, Auth user ID: ${user?.id || "not authenticated"}, Final userId: ${userId || "guest"}, Form tier: ${formTier || "not provided"}`,
+    );
 
     // Validate inputs
     if (!files || files.length === 0) {
@@ -57,7 +161,15 @@ export async function POST(request: NextRequest) {
       "artistic",
       "minimalist",
       "outdoor",
+      "monochrome",
+      "fashion",
+      "vintage",
+      "dynamic",
+      "environmental",
+      "bold",
     ];
+
+    console.log(`Received style: ${style}`);
     if (style && !validStyles.includes(style)) {
       return NextResponse.json(
         {
@@ -67,6 +179,9 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Get the full generation prompt based on style and user input
+    const fullPrompt = getGenerationPrompt(style, userPrompt);
 
     // Prepare files for processing
     const imageData = [];
@@ -81,10 +196,39 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    let userData = null;
+    console.log(
+      `User authenticated: ${!!user}, User ID: ${userId || "guest"}, numImagesToGenerate: ${numImagesToGenerate}`,
+    );
+
+    // Check if we have a tier from the form data and use it directly
+    if (formTier) {
+      console.log(`Using tier from form data: ${formTier}`);
+      if (formTier === "premium") {
+        numImagesToGenerate = 6;
+        console.log(
+          "Premium tier from form data, setting numImagesToGenerate to 6",
+        );
+      } else if (formTier === "pro") {
+        numImagesToGenerate = 10;
+        console.log(
+          "Pro tier from form data, setting numImagesToGenerate to 10",
+        );
+      } else {
+        console.log(
+          `Using default numImagesToGenerate: 4 for tier: ${formTier}`,
+        );
+      }
+    }
+
     let generatedImages;
 
     // Check if Gemini API is enabled and should be used
     if (GEMINI_CONFIG.ENABLED) {
+      // Force numImagesToGenerate to be passed correctly to processImages
+      console.log(
+        `Before Gemini API call - numImagesToGenerate: ${numImagesToGenerate}`,
+      );
       try {
         console.log(
           "Using Gemini API for image processing with key:",
@@ -93,17 +237,171 @@ export async function POST(request: NextRequest) {
             : "NOT SET",
         );
 
-        // Process images with Gemini API - always generate at least 4 images
+        // We already declared numImagesToGenerate at the top of the function
+        // Don't reset userData to null here, as we need it for subscription checks
+
+        // Log authentication status
+        console.log(
+          `Before checking subscription - User authenticated: ${!!user}, User ID: ${user?.id || "guest"}`,
+        );
+
+        // Only check database if we don't have tier from form data
+        if (userId && !formTier) {
+          console.log(
+            "User ID available, checking subscription tier for user ID:",
+            userId,
+          );
+
+          // Log the auth token for debugging (first few characters only)
+          const authHeader = request.headers.get("authorization");
+          if (authHeader) {
+            console.log(
+              "Auth token present:",
+              authHeader.substring(0, 15) + "...",
+            );
+          } else {
+            console.warn(
+              "No auth token in request headers despite user being authenticated",
+            );
+          }
+          // Check user's subscription tier
+          // Use service role client to bypass RLS for this query
+          const { data: userDataResult, error: userDataError } =
+            await serviceClient
+              .from("users")
+              .select("subscription_tier, subscription")
+              .eq("id", userId)
+              .single();
+
+          userData = userDataResult;
+          console.log(
+            "User subscription data:",
+            userData,
+            "Error:",
+            userDataError,
+          );
+
+          if (userData?.subscription_tier) {
+            try {
+              const tierLower = userData.subscription_tier.toLowerCase();
+              console.log(
+                `User tier detected from subscription_tier field: ${tierLower}`,
+              );
+
+              if (tierLower === "premium") {
+                numImagesToGenerate = 6;
+                console.log(
+                  "Premium user detected, setting numImagesToGenerate to 6",
+                );
+              } else if (tierLower === "pro") {
+                numImagesToGenerate = 10;
+                console.log(
+                  "Pro user detected, setting numImagesToGenerate to 10",
+                );
+              } else {
+                console.log(
+                  `Unknown tier "${tierLower}" detected, using default numImagesToGenerate: 4`,
+                );
+              }
+            } catch (error) {
+              console.error("Error processing subscription tier:", error);
+              // Default to 4 images if there's an error
+              numImagesToGenerate = 4;
+            }
+
+            // Double-check the value was set correctly
+            console.log(
+              `After tier detection, numImagesToGenerate is now: ${numImagesToGenerate}`,
+            );
+          } else if (userData?.subscription) {
+            // If subscription_tier is not set but user has a subscription, check subscriptions table
+            console.log(
+              "User has subscription but no tier, checking subscriptions table. Subscription ID:",
+              userData.subscription,
+            );
+            const { data: subData, error: subError } = await supabase
+              .from("subscriptions")
+              .select("polar_price_id, status")
+              .eq("polar_id", userData.subscription)
+              .eq("status", "active")
+              .single();
+
+            console.log("Subscription data:", subData, "Error:", subError);
+
+            if (subData?.polar_price_id) {
+              const priceId = subData.polar_price_id.toLowerCase();
+              console.log("Price ID from subscription:", priceId);
+
+              if (priceId.includes("pro")) {
+                numImagesToGenerate = 10;
+                console.log(
+                  "Pro subscription detected from price ID, setting numImagesToGenerate to 10",
+                );
+              } else if (priceId.includes("premium")) {
+                numImagesToGenerate = 6;
+                console.log(
+                  "Premium subscription detected from price ID, setting numImagesToGenerate to 6",
+                );
+              } else {
+                console.log(
+                  `Price ID "${priceId}" doesn't match known tiers, using default numImagesToGenerate: 4`,
+                );
+              }
+            } else {
+              console.log(
+                "No valid price ID found in subscription data, using default numImagesToGenerate: 4",
+              );
+            }
+          } else {
+            console.log(
+              "User has no subscription_tier or subscription field, using default numImagesToGenerate: 4",
+            );
+          }
+        }
+
+        try {
+          console.log(
+            `Generating ${numImagesToGenerate} images for user with tier: ${userId ? userData?.subscription_tier || formTier || "authenticated" : "guest"}`,
+          );
+        } catch (error) {
+          console.error("Error logging generation info:", error);
+        }
+
+        // Process images with Gemini API
+        console.log(
+          `Calling processImages with numImagesToGenerate: ${numImagesToGenerate}`,
+        );
+        try {
+          console.log(
+            `User tier: ${userData?.subscription_tier || formTier || "unknown"}, Subscription ID: ${userData?.subscription || "none"}`,
+          );
+        } catch (error) {
+          console.error("Error logging user tier info:", error);
+        }
+        // Ensure we're passing the correct number of images to generate based on subscription tier
+        console.log(
+          `Calling processImages with explicit numImagesToGenerate: ${numImagesToGenerate}`,
+        );
         const processedImages = await processImages(
           imageData,
-          prompt,
+          fullPrompt, // Use the full prompt with style instructions
           style,
-          4,
+          numImagesToGenerate, // This should be 4 for free, 6 for premium, 10 for pro
         );
 
         // Verify we got valid images back
         if (!processedImages || processedImages.length === 0) {
           throw new Error("No images were returned from Gemini API");
+        }
+
+        // Verify we got the correct number of images based on subscription tier
+        console.log(
+          `Received ${processedImages.length} images from processImages, expected ${numImagesToGenerate}`,
+        );
+        if (processedImages.length !== numImagesToGenerate) {
+          console.warn(
+            `Number of images returned (${processedImages.length}) doesn't match expected count (${numImagesToGenerate})`,
+          );
         }
 
         // Validate each image is a proper base64 string
@@ -186,8 +484,8 @@ export async function POST(request: NextRequest) {
         return url;
       });
 
-      // Always ensure we have exactly 4 images in mock data
-      while (processedImages.length < 4 && processedImages.length > 0) {
+      // Ensure we have enough images based on the maximum tier (10 for Pro)
+      while (processedImages.length < 10 && processedImages.length > 0) {
         // Duplicate existing images if we have fewer than 4
         processedImages.push(
           processedImages[processedImages.length % processedImages.length],
@@ -281,7 +579,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Ensure we're not returning null or undefined and always have exactly 4 images
+    // Ensure we're not returning null or undefined and always have at least 4 images
     const finalResponse = generatedImages || {
       images: [
         "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=80",
@@ -293,21 +591,41 @@ export async function POST(request: NextRequest) {
       message: "Using fallback images",
     };
 
-    // Ensure we always have exactly 4 images
-    if (finalResponse.images.length > 4) {
-      finalResponse.images = finalResponse.images.slice(0, 4);
+    // Log the number of images we have before any adjustments
+    console.log(
+      `Number of images before adjustment: ${finalResponse.images.length}, numImagesToGenerate: ${numImagesToGenerate}`,
+    );
+
+    // Ensure we have enough images for all subscription tiers (up to 10 for Pro)
+    if (finalResponse.images.length > 10) {
+      finalResponse.images = finalResponse.images.slice(0, 10);
+      console.log(
+        `Trimmed excess images, now have: ${finalResponse.images.length}`,
+      );
     } else if (
-      finalResponse.images.length < 4 &&
+      finalResponse.images.length < numImagesToGenerate &&
       finalResponse.images.length > 0
     ) {
-      // If we have fewer than 4 images, duplicate existing ones to reach 4
-      while (finalResponse.images.length < 4) {
+      // If we have fewer than the required images based on subscription tier, duplicate existing ones
+      console.log(
+        `Not enough images (${finalResponse.images.length}), duplicating to reach ${numImagesToGenerate}`,
+      );
+      while (finalResponse.images.length < numImagesToGenerate) {
         finalResponse.images.push(
           finalResponse.images[
             finalResponse.images.length % finalResponse.images.length
           ],
         );
       }
+      console.log(
+        `After duplication, now have: ${finalResponse.images.length} images`,
+      );
+    } else if (finalResponse.images.length > numImagesToGenerate) {
+      // If we have more images than needed for this tier, trim to the correct number
+      finalResponse.images = finalResponse.images.slice(0, numImagesToGenerate);
+      console.log(
+        `Trimmed to match subscription tier, now have: ${finalResponse.images.length} images`,
+      );
     }
 
     return NextResponse.json(finalResponse);

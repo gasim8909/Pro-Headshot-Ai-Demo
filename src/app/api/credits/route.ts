@@ -32,7 +32,15 @@ export async function GET(request: NextRequest) {
 
     // If user is logged in, get their credits from database
     if (userId) {
+      console.log("API: User is logged in with ID:", userId);
       const creditInfo = await getUserCredits(userId);
+      console.log(
+        "API: Credit info for logged-in user:",
+        creditInfo,
+        "tier:",
+        creditInfo.tier,
+        "isGuest set to false",
+      );
       return NextResponse.json(
         {
           credits: creditInfo.creditsRemaining,
@@ -48,9 +56,12 @@ export async function GET(request: NextRequest) {
 
     // For guests, return a placeholder value
     // The actual tracking will happen client-side with localStorage
+    console.log(
+      "API: No user ID found, returning guest credits with isGuest=true",
+    );
     return NextResponse.json(
       {
-        credits: 5, // Default free tier value
+        credits: CREDIT_LIMITS.guest, // Default guest value
         tier: "free",
         used: 0,
         isGuest: true,

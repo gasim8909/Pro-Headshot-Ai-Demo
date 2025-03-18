@@ -8,6 +8,7 @@ import {
   ReactNode,
 } from "react";
 import { createClient } from "../../supabase/client";
+import { GUEST_TIER, SUBSCRIPTION_TIERS, getTierFeatures } from "@/lib/config";
 
 type SubscriptionTier = "free" | "premium" | "pro";
 
@@ -15,21 +16,37 @@ type SubscriptionContextType = {
   tier: SubscriptionTier;
   isLoading: boolean;
   isSubscribed: boolean;
+  isGuest: boolean;
   maxGenerations: number;
-  maxUploads: number;
+  maxUploads: number | string;
   hasAdvancedStyles: boolean;
   hasHistoryAccess: boolean;
   refreshSubscription: () => Promise<void>;
 };
 
+// Default values for guest users (not logged in)
+const guestContext: SubscriptionContextType = {
+  tier: "free",
+  isLoading: true,
+  isSubscribed: false,
+  isGuest: true,
+  maxGenerations: GUEST_TIER.maxVariations,
+  maxUploads: GUEST_TIER.maxUploads,
+  hasAdvancedStyles: GUEST_TIER.advancedPrompting,
+  hasHistoryAccess: GUEST_TIER.hasHistoryAccess,
+  refreshSubscription: async () => {},
+};
+
+// Default values for free tier (logged in users)
 const defaultContext: SubscriptionContextType = {
   tier: "free",
   isLoading: true,
   isSubscribed: false,
-  maxGenerations: 5,
-  maxUploads: 3,
-  hasAdvancedStyles: false,
-  hasHistoryAccess: false,
+  isGuest: false,
+  maxGenerations: SUBSCRIPTION_TIERS.FREE.maxVariations,
+  maxUploads: SUBSCRIPTION_TIERS.FREE.maxUploads,
+  hasAdvancedStyles: SUBSCRIPTION_TIERS.FREE.advancedPrompting,
+  hasHistoryAccess: SUBSCRIPTION_TIERS.FREE.hasHistoryAccess || false,
   refreshSubscription: async () => {},
 };
 
@@ -61,172 +78,76 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (user) {
         sessionStorage.removeItem(`subscription-${user.id}`);
         console.log("Cleared subscription cache for force refresh");
+
+        // Also clear any cached data in the API route
+        try {
+          await fetch("/api/subscription/status?forceRefresh=true");
+          console.log("Triggered API cache refresh");
+        } catch (e) {
+          console.error("Error triggering API cache refresh:", e);
+        }
       }
     }
 
     try {
+      // Check if user is logged in
       const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
+      // If not logged in, set as guest user
       if (!user) {
+        console.log("No user found - setting as guest");
         setSubscriptionData({
-          ...defaultContext,
+          ...guestContext,
           isLoading: false,
           refreshSubscription,
         });
         return;
       }
 
-      // First check the user's subscription_tier field directly
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("subscription, subscription_tier")
-        .eq("id", user.id)
-        .single();
+      // User is logged in - fetch subscription data from API
+      console.log("Fetching subscription data for logged-in user");
+      const response = await fetch("/api/subscription/status");
 
-      console.log("User data from context:", userData);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Subscription data from API:", data);
 
-      // If user has a subscription_tier field set, use that directly
-      if (!userError && userData && userData.subscription_tier) {
-        const tier = userData.subscription_tier as SubscriptionTier;
-        console.log("Using subscription_tier from user data:", tier);
+        // Get tier features from centralized config
+        const tierFeatures = getTierFeatures(data.tier || "free");
 
+        // Set subscription data with appropriate values based on tier
         setSubscriptionData({
-          tier,
+          tier: data.tier || "free",
           isLoading: false,
-          isSubscribed: tier !== "free",
-          maxGenerations: tier === "pro" ? 100 : tier === "premium" ? 25 : 5,
-          maxUploads: tier === "pro" ? 10 : tier === "premium" ? 5 : 3,
-          hasAdvancedStyles: tier !== "free",
-          hasHistoryAccess: tier !== "free",
+          isSubscribed: data.isSubscribed || false,
+          isGuest: false, // User is logged in, so not a guest
+          maxGenerations: tierFeatures.maxVariations,
+          maxUploads: tierFeatures.maxUploads,
+          hasAdvancedStyles: tierFeatures.advancedPrompting,
+          hasHistoryAccess: tierFeatures.hasHistoryAccess || false,
           refreshSubscription,
         });
-        return;
-      }
 
-      // If user has a subscription field set but no tier, check subscription details
-      if (!userError && userData && userData.subscription) {
-        // Get subscription details from subscriptions table
-        const { data: subData, error: subError } = await supabase
-          .from("subscriptions")
-          .select("*")
-          .eq("polar_id", userData.subscription)
-          .single();
-
-        if (!subError && subData && subData.status === "active") {
-          // Determine tier based on price ID or other subscription data
-          let tier: SubscriptionTier = "premium"; // Default to premium if we have a subscription
-
-          // Example logic - adjust based on your actual price IDs
-          const priceId = subData.polar_price_id;
-          console.log("Subscription price ID:", priceId);
-
-          if (priceId && priceId.toLowerCase().includes("pro")) {
-            tier = "pro";
-          } else if (priceId && priceId.toLowerCase().includes("premium")) {
-            tier = "premium";
-          }
-
-          console.log("Determined tier from subscription:", tier);
-
-          // Update the user's subscription_tier in the database
+        // Cache the subscription data
+        if (typeof window !== "undefined") {
           try {
-            await supabase
-              .from("users")
-              .update({ subscription_tier: tier })
-              .eq("id", user.id);
-            console.log("Updated user's subscription_tier to:", tier);
-          } catch (updateError) {
-            console.error("Error updating subscription_tier:", updateError);
+            sessionStorage.setItem(
+              `subscription-${user.id}`,
+              JSON.stringify({
+                data,
+                timestamp: Date.now(),
+              }),
+            );
+          } catch (e) {
+            console.error("Error writing to sessionStorage:", e);
           }
-
-          setSubscriptionData({
-            tier,
-            isLoading: false,
-            isSubscribed: true,
-            maxGenerations: tier === "pro" ? 100 : 25,
-            maxUploads: tier === "pro" ? 10 : 5,
-            hasAdvancedStyles: true,
-            hasHistoryAccess: true,
-            refreshSubscription,
-          });
-          return;
         }
-      }
-
-      // Fallback to checking subscriptions table directly
-      const { data: subscriptions, error } = await supabase
-        .from("subscriptions")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("status", "active");
-
-      if (error) {
-        console.error("Error fetching subscription:", error);
-        setSubscriptionData({
-          ...defaultContext,
-          isLoading: false,
-          refreshSubscription,
-        });
-        return;
-      }
-
-      // Determine subscription tier based on subscription data
-      if (subscriptions && subscriptions.length > 0) {
-        const subscription = subscriptions[0];
-
-        // Only consider active subscriptions
-        if (subscription.status !== "active") {
-          setSubscriptionData({
-            ...defaultContext,
-            isLoading: false,
-            refreshSubscription,
-          });
-          return;
-        }
-
-        // Get the price ID to determine the tier
-        const priceId = subscription.polar_price_id;
-
-        // Determine tier based on price ID or other subscription data
-        let tier: SubscriptionTier = "premium"; // Default to premium for any active subscription
-
-        // Log the price ID for debugging
-        console.log("Context subscription price ID:", priceId);
-
-        // Example logic - adjust based on your actual price IDs
-        if (priceId && priceId.toLowerCase().includes("pro")) {
-          tier = "pro";
-        } else if (priceId && priceId.toLowerCase().includes("premium")) {
-          tier = "premium";
-        }
-
-        // Update the user's subscription_tier in the database
-        try {
-          await supabase
-            .from("users")
-            .update({ subscription_tier: tier })
-            .eq("id", user.id);
-          console.log("Updated user's subscription_tier to:", tier);
-        } catch (updateError) {
-          console.error("Error updating subscription_tier:", updateError);
-        }
-
-        // Set subscription features based on tier
-        setSubscriptionData({
-          tier,
-          isLoading: false,
-          isSubscribed: true,
-          maxGenerations: tier === "pro" ? 100 : 25,
-          maxUploads: tier === "pro" ? 10 : 5,
-          hasAdvancedStyles: true,
-          hasHistoryAccess: true,
-          refreshSubscription,
-        });
       } else {
-        // No active subscription - set to free tier
+        // API failed - set default free tier for logged-in user
+        console.error("API request failed, using default free tier");
         setSubscriptionData({
           ...defaultContext,
           isLoading: false,
@@ -235,8 +156,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Error in subscription check:", error);
+      // On error, set as guest if we can't determine user status
       setSubscriptionData({
-        ...defaultContext,
+        ...guestContext,
         isLoading: false,
         refreshSubscription,
       });
@@ -249,12 +171,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
     const fetchFromApi = async () => {
       try {
-        // Check for cached subscription data in sessionStorage
+        // Check if user is logged in
         const supabase = createClient();
         const { data } = await supabase.auth.getUser();
         const user = data?.user;
 
-        if (user && typeof window !== "undefined") {
+        // If not logged in, set as guest user
+        if (!user) {
+          console.log("No user found - setting as guest");
+          if (isMounted) {
+            setSubscriptionData({
+              ...guestContext,
+              isLoading: false,
+              refreshSubscription,
+            });
+          }
+          return;
+        }
+
+        // Check for cached subscription data
+        if (typeof window !== "undefined") {
           try {
             const cachedSubscription = sessionStorage.getItem(
               `subscription-${user.id}`,
@@ -268,6 +204,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
                 console.log("Using cached subscription data");
                 setSubscriptionData({
                   ...data,
+                  isGuest: false, // Ensure this is set correctly
                   isLoading: false,
                   refreshSubscription,
                 });
@@ -284,14 +221,25 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         const response = await fetch("/api/subscription/status");
         if (response.ok && isMounted) {
           const data = await response.json();
+          console.log("Subscription data from API:", data);
+
+          // Get tier features from centralized config
+          const tierFeatures = getTierFeatures(data.tier || "free");
+
           setSubscriptionData({
-            ...data,
+            tier: data.tier || "free",
             isLoading: false,
+            isSubscribed: data.isSubscribed || false,
+            isGuest: false, // User is logged in, so not a guest
+            maxGenerations: tierFeatures.maxVariations,
+            maxUploads: tierFeatures.maxUploads,
+            hasAdvancedStyles: tierFeatures.advancedPrompting,
+            hasHistoryAccess: tierFeatures.hasHistoryAccess || false,
             refreshSubscription,
           });
 
-          // Cache the subscription data if user is logged in
-          if (user && typeof window !== "undefined") {
+          // Cache the subscription data
+          if (typeof window !== "undefined") {
             try {
               sessionStorage.setItem(
                 `subscription-${user.id}`,
@@ -311,7 +259,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Error fetching subscription from API:", error);
         if (isMounted) {
-          refreshSubscription();
+          // On error, set as guest if we can't determine user status
+          setSubscriptionData({
+            ...guestContext,
+            isLoading: false,
+            refreshSubscription,
+          });
         }
       }
     };
@@ -322,7 +275,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     } else {
       // Set default values for server-side rendering
       setSubscriptionData({
-        ...defaultContext,
+        ...guestContext, // Default to guest for SSR
         isLoading: false,
         refreshSubscription,
       });
@@ -352,7 +305,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             (payload) => {
               console.log("User subscription changed:", payload);
               if (isMounted) {
-                refreshSubscription();
+                refreshSubscription(true); // Force refresh when subscription changes
               }
             },
           )
@@ -372,7 +325,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             (payload) => {
               console.log("Subscription changed:", payload);
               if (isMounted) {
-                refreshSubscription();
+                refreshSubscription(true); // Force refresh when subscription changes
               }
             },
           )

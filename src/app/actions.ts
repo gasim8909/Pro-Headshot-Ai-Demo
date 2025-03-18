@@ -49,7 +49,6 @@ export const signUpAction = async (formData: FormData) => {
       const adminClient = await createClient();
 
       const { error: updateError } = await adminClient.from("users").insert({
-        id: user.id,
         name: fullName,
         full_name: fullName,
         email: email,
@@ -165,7 +164,17 @@ export const resetPasswordAction = async (formData: FormData) => {
 export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return redirect("/sign-in");
+
+  // Clear client-side caches by setting a cookie that the client can detect
+  cookies().set("credit_cache_bust", Date.now().toString(), {
+    maxAge: 5, // Short-lived cookie just to trigger client refresh
+    path: "/",
+  });
+
+  // Force a full page reload to clear any client-side state
+  // by adding a cache-busting parameter to the URL
+  const timestamp = Date.now();
+  return redirect(`/?reload=${timestamp}`);
 };
 
 export const checkoutSessionAction = async ({
@@ -259,10 +268,18 @@ export const getUserCredits = async (userId: string) => {
       .eq("id", userId)
       .single();
 
-    if (userError) throw userError;
+    if (userError) {
+      console.error("Error fetching user data:", userError);
+      throw userError;
+    }
 
     // If no user data or missing fields, return default values
     if (!userData) {
+      console.log(
+        "No user data found for ID:",
+        userId,
+        "returning default free tier",
+      );
       return {
         creditsRemaining: CREDIT_LIMITS.free,
         creditsUsed: 0,
@@ -281,6 +298,10 @@ export const getUserCredits = async (userId: string) => {
       tier = userData.subscription_tier;
       console.log("Using existing subscription_tier:", tier);
     } else if (userData.subscription) {
+      console.log(
+        "No subscription_tier found, checking subscription field:",
+        userData.subscription,
+      );
       // If subscription exists but no tier, check subscription details
       const { data: subData, error: subError } = await supabase
         .from("subscriptions")
@@ -435,11 +456,24 @@ export const checkAndUseCredit = async (userId?: string) => {
 export const getRemainingCreditsAction = async (userId?: string) => {
   // For registered users
   if (userId) {
+    console.log(
+      "getRemainingCreditsAction: Getting credits for user ID:",
+      userId,
+    );
     const { creditsRemaining, tier } = await getUserCredits(userId);
-    return { credits: creditsRemaining, tier };
+    console.log(
+      "getRemainingCreditsAction: Retrieved credits:",
+      creditsRemaining,
+      "tier:",
+      tier,
+    );
+    return { credits: creditsRemaining, tier, isGuest: false };
   }
 
-  // For guests, we'll return the default free tier value
+  // For guests, we'll return the default guest tier value
   // The actual tracking will happen client-side
-  return { credits: CREDIT_LIMITS.free, tier: "free" };
+  console.log(
+    "getRemainingCreditsAction: No user ID provided, returning guest credits",
+  );
+  return { credits: CREDIT_LIMITS.guest, tier: "free", isGuest: true };
 };

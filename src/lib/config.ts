@@ -28,6 +28,9 @@ export const GEMINI_CONFIG = {
   BATCH_DELAY: 3000,
 };
 
+// Import AI style prompts from dedicated file
+import { getMockImagesByStyle } from "./ai-style-prompts";
+
 // Mock data configuration
 export const MOCK_DATA = {
   // Only use mock data if explicitly enabled or if in development mode and Gemini is not enabled
@@ -38,131 +41,127 @@ export const MOCK_DATA = {
   DEMO_MODE:
     process.env.NEXT_PUBLIC_DEMO_MODE === "true" ||
     (process.env.NODE_ENV === "development" && !GEMINI_CONFIG.ENABLED),
-  STYLES: {
-    professional: [
-      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800&q=90&fit=crop",
-    ],
-    creative: [
-      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1573497019236-61e7a0081f95?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=90&fit=crop",
-    ],
-    casual: [
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&q=90&fit=crop",
-    ],
-    modern: [
-      "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1629425733761-caae3b5f2e50?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1618077360395-f3068be8e001?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1600486913747-55e5470d6f40?w=800&q=90&fit=crop",
-    ],
-    executive: [
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=90&fit=crop",
-    ],
-    business: [
-      "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=800&q=90&fit=crop",
-    ],
-    corporate: [
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&q=90&fit=crop",
-    ],
-    artistic: [
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=800&q=90&fit=crop",
-    ],
-    minimalist: [
-      "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=800&q=90&fit=crop",
-    ],
-    outdoor: [
-      "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=800&q=90&fit=crop",
-      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800&q=90&fit=crop",
-    ],
+  // Get mock images from the centralized style prompts file
+  get STYLES() {
+    return {
+      professional: getMockImagesByStyle("professional"),
+      creative: getMockImagesByStyle("creative"),
+      casual: getMockImagesByStyle("casual"),
+      modern: getMockImagesByStyle("modern"),
+      executive: getMockImagesByStyle("executive"),
+      vintage: getMockImagesByStyle("vintage"),
+      dynamic: getMockImagesByStyle("dynamic"),
+      monochrome: getMockImagesByStyle("monochrome"),
+      fashion: getMockImagesByStyle("fashion"),
+      outdoor: getMockImagesByStyle("outdoor"),
+      minimalist: getMockImagesByStyle("minimalist"),
+      environmental: getMockImagesByStyle("environmental"),
+      bold: getMockImagesByStyle("bold"),
+    };
   },
 };
 
+// Import style tiers from dedicated file
+import { TIER_STYLES, StyleId } from "./ai-style-prompts";
+
 // Subscription tiers configuration
+// This is the central file that controls all subscription features
+// Changes made here will automatically reflect throughout the application
+
+// Guest tier - for users who are not logged in
+export const GUEST_TIER = {
+  name: "Guest",
+  maxUploads: 5,
+  maxVariations: 2,
+  styles: TIER_STYLES.GUEST,
+  advancedPrompting: false,
+  customPrompting: false,
+  monthlyCredits: 5,
+  downloadFormats: ["JPEG"],
+  hasHistoryAccess: false,
+  support: "Community access only",
+  description: "Limited access for non-registered users",
+  lifetimeUploads: true, // Indicates this is a lifetime limit, not monthly
+};
+
+// Main subscription tiers
 export const SUBSCRIPTION_TIERS = {
   FREE: {
     name: "Free",
-    maxUploads: 10, // 10 for registered users, 5 for guests
-    maxVariations: 4, // 4 for registered users, 2 for guests
-    styles: ["professional", "casual", "creative"],
+    maxUploads: 10,
+    maxVariations: 4,
+    styles: TIER_STYLES.FREE,
     advancedPrompting: false,
     customPrompting: false,
-    monthlyCredits: 10, // 10 for registered users, 5 for guests
+    monthlyCredits: 10,
     downloadFormats: ["JPEG"],
+    hasHistoryAccess: false,
     support: "Community & knowledge base access",
     description: "Great for occasional users and trial experiences",
   },
   PREMIUM: {
     name: "Premium",
-    maxUploads: 20,
-    maxVariations: 10,
-    styles: [
-      "professional",
-      "casual",
-      "creative",
-      "modern",
-      "executive",
-      "business",
-      "corporate",
-      "artistic",
-      "minimalist",
-      "outdoor",
-    ],
+    maxUploads: 30,
+    maxVariations: 6,
+    styles: TIER_STYLES.PREMIUM,
     advancedPrompting: false,
     customPrompting: true,
-    monthlyCredits: 20,
+    monthlyCredits: 30,
     downloadFormats: ["JPEG", "PNG", "TIFF"],
+    hasHistoryAccess: true,
     support: "Priority email support within 48 hours",
     description: "Perfect for professionals needing enhanced flexibility",
   },
   PRO: {
     name: "Pro",
-    maxUploads: "Unlimited",
-    maxVariations: "Unlimited",
-    styles: [
-      "professional",
-      "casual",
-      "creative",
-      "modern",
-      "executive",
-      "business",
-      "corporate",
-      "artistic",
-      "minimalist",
-      "outdoor",
-    ],
+    maxUploads: 100,
+    maxVariations: 10,
+    styles: TIER_STYLES.PRO,
     advancedPrompting: true,
     customPrompting: true,
-    monthlyCredits: 999999,
+    monthlyCredits: 100,
     downloadFormats: ["JPEG", "PNG", "TIFF", "RAW"],
+    hasHistoryAccess: true,
     teamAccess: true,
     support:
       "Personal account manager with priority chat/email support within 24 hours",
     description:
       "Ideal for businesses, recruiters, executives, and frequent users requiring maximum flexibility",
   },
+};
+
+// Helper functions to get tier features
+export const getTierFeatures = (tier: string, isGuest: boolean = false) => {
+  if (isGuest) return GUEST_TIER;
+
+  const tierKey = tier.toUpperCase() as keyof typeof SUBSCRIPTION_TIERS;
+  return SUBSCRIPTION_TIERS[tierKey] || SUBSCRIPTION_TIERS.FREE;
+};
+
+// API response values based on tier
+export const getTierAPIValues = (tier: string, isGuest: boolean = false) => {
+  if (isGuest) {
+    return {
+      tier: "free",
+      isSubscribed: false,
+      isGuest: true,
+      maxGenerations: GUEST_TIER.maxVariations,
+      maxUploads: GUEST_TIER.maxUploads,
+      hasAdvancedStyles: GUEST_TIER.advancedPrompting,
+      hasHistoryAccess: GUEST_TIER.hasHistoryAccess,
+    };
+  }
+
+  const tierKey = tier.toUpperCase() as keyof typeof SUBSCRIPTION_TIERS;
+  const tierData = SUBSCRIPTION_TIERS[tierKey] || SUBSCRIPTION_TIERS.FREE;
+
+  return {
+    tier: tier.toLowerCase(),
+    isSubscribed: tier.toLowerCase() !== "free",
+    isGuest: false,
+    maxGenerations: tierData.maxVariations,
+    maxUploads: tierData.maxUploads,
+    hasAdvancedStyles: tierData.advancedPrompting,
+    hasHistoryAccess: tierData.hasHistoryAccess || false,
+  };
 };

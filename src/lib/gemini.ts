@@ -167,6 +167,24 @@ export async function processImages(
   style: string = "professional",
   minResults: number = 4,
 ): Promise<string[]> {
+  // Ensure minResults is correctly passed and used
+  console.log(`processImages received minResults parameter: ${minResults}`);
+  console.log(
+    `processImages called with minResults: ${minResults}, style: ${style}`,
+  );
+  console.log(
+    `Will generate exactly ${minResults} images as requested by the API based on subscription tier`,
+  );
+
+  // CRITICAL: Ensure minResults is not being overridden
+  if (minResults !== 4) {
+    console.log(
+      `Non-default minResults detected: ${minResults} - ensuring this value is used throughout the function`,
+    );
+  }
+
+  // Import config to access GEMINI_CONFIG
+  const { GEMINI_CONFIG } = await import("@/lib/config");
   try {
     // Limit concurrent requests to avoid overwhelming the API
     const MAX_CONCURRENT = 2;
@@ -206,7 +224,7 @@ export async function processImages(
 
       // Add a longer delay between batches to avoid rate limiting
       if (i + MAX_CONCURRENT < images.length) {
-        const batchDelay = GEMINI_CONFIG.BATCH_DELAY || 3000;
+        const batchDelay = GEMINI_CONFIG?.BATCH_DELAY || 3000;
         console.log(
           `Completed batch. Waiting ${batchDelay}ms before starting next batch to avoid rate limiting`,
         );
@@ -226,9 +244,17 @@ export async function processImages(
     }
 
     // If we don't have enough results, generate more variations from the existing images
+    console.log(
+      `Checking if we need more images: have ${validResults.length}, need ${minResults}`,
+    );
     if (validResults.length < minResults && images.length > 0) {
       console.log(
-        `Generated ${validResults.length} images, but need at least ${minResults}. Generating more variations...`,
+        `Generated ${validResults.length} images, but need at least ${minResults} based on subscription tier. Generating more variations...`,
+      );
+
+      // Log the actual number of images we're trying to generate
+      console.log(
+        `Attempting to generate ${minResults - validResults.length} more images to reach ${minResults} total for this subscription tier`,
       );
 
       // Create slight variations in the prompt to get different results
@@ -244,7 +270,10 @@ export async function processImages(
       const additionalResults: (string | null)[] = [];
 
       // Generate additional images until we reach the minimum required
-      for (let i = 0; i < minResults - validResults.length; i++) {
+      const additionalNeeded = minResults - validResults.length;
+      console.log(`Need to generate ${additionalNeeded} additional images`);
+
+      for (let i = 0; i < additionalNeeded; i++) {
         // Use a different prompt variation for each additional image
         const variationPrompt = promptVariations[i % promptVariations.length];
 
@@ -274,6 +303,41 @@ export async function processImages(
       // Add the additional results to our valid results
       validResults.push(
         ...(additionalResults.filter((result) => result !== null) as string[]),
+      );
+    }
+
+    // CRITICAL: Ensure we return exactly the number of images requested by minResults
+    console.log(
+      `Final check before returning - have ${validResults.length} images, need exactly ${minResults}`,
+    );
+    if (validResults.length > minResults) {
+      console.log(
+        `Trimming excess images to match requested count of ${minResults}`,
+      );
+      return validResults.slice(0, minResults);
+    } else if (validResults.length < minResults && validResults.length > 0) {
+      console.log(
+        `Not enough valid results (${validResults.length}), duplicating to reach ${minResults}`,
+      );
+      // Duplicate images if we don't have enough
+      while (validResults.length < minResults) {
+        validResults.push(
+          validResults[validResults.length % validResults.length],
+        );
+      }
+      console.log(
+        `After duplication in processImages, now have: ${validResults.length} images`,
+      );
+    }
+
+    // Final verification
+    if (validResults.length !== minResults) {
+      console.error(
+        `ERROR: About to return ${validResults.length} images when ${minResults} were requested!`,
+      );
+    } else {
+      console.log(
+        `SUCCESS: Returning exactly ${minResults} images as requested`,
       );
     }
 

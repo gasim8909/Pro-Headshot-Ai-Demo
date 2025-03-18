@@ -1,8 +1,11 @@
-// Constants for credit limits
+import { GUEST_TIER, SUBSCRIPTION_TIERS } from "./config";
+
+// Constants for credit limits - derived from central subscription tiers config
 export const CREDIT_LIMITS = {
-  free: 5, // 5 uploads per month for free tier
-  premium: 20, // 20 uploads per month for premium tier
-  pro: 999999, // Unlimited (practically) for pro tier
+  guest: GUEST_TIER.monthlyCredits, // Credits for guest users
+  free: SUBSCRIPTION_TIERS.FREE.monthlyCredits, // Credits for free tier (registered users)
+  premium: SUBSCRIPTION_TIERS.PREMIUM.monthlyCredits, // Credits for premium tier
+  pro: SUBSCRIPTION_TIERS.PRO.monthlyCredits, // Credits for pro tier
 };
 
 // Constants for local storage keys
@@ -24,14 +27,14 @@ export const initGuestCredits = () => {
 
   // If it's a new month or no credits exist yet, reset credits
   if (!storedResetDate || storedResetDate !== currentMonth) {
-    localStorage.setItem(GUEST_CREDITS_KEY, String(CREDIT_LIMITS.free));
+    localStorage.setItem(GUEST_CREDITS_KEY, String(CREDIT_LIMITS.guest));
     localStorage.setItem(GUEST_CREDITS_RESET_KEY, currentMonth);
-    return CREDIT_LIMITS.free;
+    return CREDIT_LIMITS.guest;
   }
 
   // Return existing credits
   const credits = localStorage.getItem(GUEST_CREDITS_KEY);
-  return credits ? parseInt(credits, 10) : CREDIT_LIMITS.free;
+  return credits ? parseInt(credits, 10) : CREDIT_LIMITS.guest;
 };
 
 // Decrement guest credits when used

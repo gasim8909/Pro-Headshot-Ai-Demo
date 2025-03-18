@@ -11,7 +11,7 @@ interface SubscriptionCheckProps {
 export async function SubscriptionCheck({
   children,
   redirectTo = "/pricing",
-  requireSubscription = true,
+  requireSubscription = false,
 }: SubscriptionCheckProps) {
   const supabase = await createClient();
   const {
@@ -32,7 +32,10 @@ export async function SubscriptionCheck({
       }
     } catch (error) {
       console.error("Error in subscription check:", error);
-      redirect(redirectTo);
+      // Don't redirect on error if we don't require subscription
+      if (requireSubscription) {
+        redirect(redirectTo);
+      }
     }
   }
 

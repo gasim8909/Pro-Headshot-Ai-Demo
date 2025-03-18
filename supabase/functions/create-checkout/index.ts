@@ -68,10 +68,8 @@ serve(async (req) => {
     // Initialize Polar client with the access token and client credentials
     const polar = new Polar({
       accessToken,
-      clientId:
-        Deno.env.get("POLAR_CLIENT_ID") ||
-        "polar_ci_LOFh01fzCprE6iwHBPP1i2if56YmFPX2nuKAY4C1WY8",
-      clientSecret: Deno.env.get("POLAR_CLIENT_SECRET"),
+      clientId: Deno.env.get("POLAR_CLIENT_ID") || "",
+      clientSecret: Deno.env.get("POLAR_CLIENT_SECRET") || "",
       server: "sandbox",
     });
 

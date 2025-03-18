@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
 
     // Create client with auth token if available
     const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_ANON_KEY!,
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         global: {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     // Create a service role client for admin operations
     const serviceClient = createClient(
-      process.env.SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_KEY!,
     );
 
@@ -506,7 +506,7 @@ export async function POST(request: NextRequest) {
       try {
         // Create a service role client to bypass RLS for bucket operations
         const serviceRoleClient = createClient(
-          process.env.SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.SUPABASE_SERVICE_KEY!,
         );
 

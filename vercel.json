@@ -6,6 +6,14 @@
   "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next_public_supabase_anon_key"
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next_public_supabase_anon_key",
+    "SUPABASE_SERVICE_KEY": "@supabase_service_key",
+    "SUPABASE_PROJECT_ID": "@supabase_project_id",
+    "POLAR_ORGANIZATION_ID": "@polar_organization_id",
+    "POLAR_ACCESS_TOKEN": "@polar_access_token",
+    "POLAR_WEBHOOK_SECRET": "@polar_webhook_secret",
+    "POLAR_CLIENT_ID": "@polar_client_id",
+    "POLAR_CLIENT_SECRET": "@polar_client_secret",
+    "GEMINI_API_KEY": "@gemini_api_key"
   }
 }

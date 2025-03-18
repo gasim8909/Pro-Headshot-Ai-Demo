@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { getUserCredits } from "@/app/actions";
 import { CREDIT_LIMITS } from "@/lib/credits";
@@ -7,17 +7,18 @@ import { CREDIT_LIMITS } from "@/lib/credits";
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = cookies();
-    const supabase = createServerClient(
+
+    // Create a Supabase client with the auth cookie
+    const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        cookies: {
-          get: (name: string) => cookieStore.get(name)?.value,
-          set: (name: string, value: string, options: any) => {
-            // This is a read-only operation in an API route
-          },
-          remove: (name: string, options: any) => {
-            // This is a read-only operation in an API route
+        auth: {
+          persistSession: false,
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${cookieStore.get("sb-access-token")?.value || ""}`,
           },
         },
       },

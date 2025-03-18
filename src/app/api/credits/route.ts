@@ -7,6 +7,7 @@ import { CREDIT_LIMITS } from "@/lib/credits";
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = cookies();
+    const accessToken = cookieStore.get("sb-access-token")?.value || "";
 
     // Create a Supabase client with the auth cookie
     const supabase = createClient(
@@ -15,10 +16,11 @@ export async function GET(request: NextRequest) {
       {
         auth: {
           persistSession: false,
+          autoRefreshToken: false,
         },
         global: {
           headers: {
-            Authorization: `Bearer ${cookieStore.get("sb-access-token")?.value || ""}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         },
       },

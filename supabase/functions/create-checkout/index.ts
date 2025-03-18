@@ -1,4 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// Use a more recent version of the Deno standard library for better compatibility
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { Polar } from "npm:@polar-sh/sdk";
 
 const corsHeaders = {

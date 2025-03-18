@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getUserCredits } from "@/app/actions";
 import { CREDIT_LIMITS } from "@/lib/credits";
@@ -7,13 +7,17 @@ import { CREDIT_LIMITS } from "@/lib/credits";
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = cookies();
-    const supabase = createClient(
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
+          get: (name: string) => cookieStore.get(name)?.value,
+          set: (name: string, value: string, options: any) => {
+            // This is a read-only operation in an API route
+          },
+          remove: (name: string, options: any) => {
+            // This is a read-only operation in an API route
           },
         },
       },

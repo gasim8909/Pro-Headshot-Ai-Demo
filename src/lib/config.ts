@@ -3,17 +3,7 @@
 // Python server URL for image processing
 // In containerized environments, we need to use a publicly accessible URL
 // Default to a relative URL that will be resolved against the current origin
-export const PYTHON_SERVER_URL =
-  process.env.NEXT_PUBLIC_PYTHON_SERVER_URL || "/api/python-server";
-
-// Only use the proxy if explicitly enabled
-export const USE_PYTHON_PROXY =
-  process.env.NEXT_PUBLIC_USE_PYTHON_PROXY === "true";
-
-// If proxy is enabled, use it instead of the direct server endpoint
-export const ACTIVE_PYTHON_SERVER_URL = USE_PYTHON_PROXY
-  ? "/api/python-proxy"
-  : PYTHON_SERVER_URL;
+// Python server configuration removed as it's no longer needed
 
 // Default timeout values (in milliseconds)
 export const TIMEOUTS = {
@@ -116,12 +106,12 @@ export const MOCK_DATA = {
 export const SUBSCRIPTION_TIERS = {
   FREE: {
     name: "Free",
-    maxUploads: 5,
-    maxVariations: 4,
+    maxUploads: 10, // 10 for registered users, 5 for guests
+    maxVariations: 4, // 4 for registered users, 2 for guests
     styles: ["professional", "casual", "creative"],
     advancedPrompting: false,
     customPrompting: false,
-    monthlyCredits: 5,
+    monthlyCredits: 10, // 10 for registered users, 5 for guests
     downloadFormats: ["JPEG"],
     support: "Community & knowledge base access",
     description: "Great for occasional users and trial experiences",

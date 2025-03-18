@@ -2,7 +2,12 @@ import Link from "next/link";
 import { createClient } from "../../supabase/server";
 import { Button } from "./ui/button";
 import { Camera, UserCircle } from "lucide-react";
-import UserProfile from "./user-profile";
+import dynamic from "next/dynamic";
+import ServerAvatar from "./server-avatar";
+
+// Dynamically import the UserProfile component with no SSR
+// This ensures it only runs on the client where the context is available
+const UserProfile = dynamic(() => import("./user-profile"), { ssr: false });
 
 export default async function Navbar() {
   let user = null;
@@ -52,6 +57,7 @@ export default async function Navbar() {
         <div className="flex gap-4 items-center">
           {user ? (
             <>
+              {/* Use client-side only UserProfile component */}
               <UserProfile />
             </>
           ) : (

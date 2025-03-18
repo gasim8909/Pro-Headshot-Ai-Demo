@@ -56,13 +56,6 @@ export default function UploadForm({ user }: { user?: User | null }) {
     severity: "error" | "warning" | "info";
   } | null>(null);
 
-  // Get subscription data
-  const { isSubscribed, tier, maxUploads, maxGenerations, hasAdvancedStyles } =
-    useSubscription();
-
-  // State for tracking credits
-  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
-
   // Define subscription features based on tier
   const subscriptionFeatures = {
     free: SUBSCRIPTION_TIERS.FREE,
@@ -70,10 +63,28 @@ export default function UploadForm({ user }: { user?: User | null }) {
     pro: SUBSCRIPTION_TIERS.PRO,
   };
 
+  // Get subscription data
+  const { isSubscribed, tier, maxUploads, maxGenerations, hasAdvancedStyles } =
+    useSubscription();
+
+  // Adjust limits for guest users (non-registered free tier users)
+  const actualMaxUploads = tier === "free" && !user ? 5 : maxUploads;
+  const actualMaxVariations =
+    tier === "free" && !user
+      ? 2
+      : subscriptionFeatures[tier as keyof typeof subscriptionFeatures]
+          .maxVariations;
+
+  // State for tracking credits
+  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      // Limit files based on subscription tier
-      const selectedFiles = Array.from(e.target.files).slice(0, maxUploads);
+      // Limit files based on subscription tier and user status
+      const selectedFiles = Array.from(e.target.files).slice(
+        0,
+        actualMaxUploads,
+      );
       setFiles(selectedFiles);
 
       // Create previews
@@ -83,10 +94,10 @@ export default function UploadForm({ user }: { user?: User | null }) {
       setPreviews(newPreviews);
 
       // Show warning if more files were selected than allowed by subscription
-      if (e.target.files.length > maxUploads) {
+      if (e.target.files.length > actualMaxUploads) {
         setError({
           title: "Too many files",
-          message: `Maximum ${maxUploads} photos allowed for ${tier} tier. Only the first ${maxUploads} have been selected.`,
+
           severity: "warning",
         });
       } else {
@@ -599,6 +610,72 @@ export default function UploadForm({ user }: { user?: User | null }) {
             <Info className="h-4 w-4 text-blue-500" />
             Your Plan Features
           </h3>
+
+          {tier === "free" && (
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-700 mb-2 flex items-center gap-1.5">
+                <CheckCircle className="h-4 w-4" />
+                {user
+                  ? "Free Account Benefits"
+                  : "Create a Free Account for 50% More"}
+              </h4>
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-blue-100/50">
+                  <tr>
+                    <th className="text-left p-2 text-blue-800 font-medium">
+                      Feature
+                    </th>
+                    <th className="text-center p-2 text-blue-800 font-medium">
+                      Guest Account
+                    </th>
+                    <th className="text-center p-2 text-blue-800 font-medium">
+                      Free Account
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-blue-100">
+                  <tr>
+                    <td className="p-2 text-gray-700">Uploads</td>
+                    <td className="p-2 text-center text-gray-700">
+                      5 uploads/month
+                    </td>
+                    <td className="p-2 text-center font-medium text-blue-700">
+                      10 uploads/month
+                      {!user && <span className="ml-1 text-green-600">+5</span>}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-2 text-gray-700">Variations per Upload</td>
+                    <td className="p-2 text-center text-gray-700">
+                      2 headshots
+                    </td>
+                    <td className="p-2 text-center font-medium text-blue-700">
+                      4 headshots
+                      {!user && <span className="ml-1 text-green-600">+2</span>}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-2 text-gray-700">Styles</td>
+                    <td className="p-2 text-center text-gray-700">3 styles</td>
+                    <td className="p-2 text-center font-medium text-blue-700">
+                      3 styles
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              {!user && (
+                <div className="mt-3 flex justify-center">
+                  <Button
+                    asChild
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700"
+                  >
+                    <Link href="/sign-up">Create Free Account</Link>
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <div className="flex flex-col">
               <span className="text-gray-500">Uploads</span>
@@ -609,6 +686,11 @@ export default function UploadForm({ user }: { user?: User | null }) {
                   ].maxUploads
                 }
                 /month
+                {tier === "free" && !user && (
+                  <span className="text-xs text-red-500 ml-1">
+                    (5 as guest)
+                  </span>
+                )}
               </span>
             </div>
             <div className="flex flex-col">
@@ -620,6 +702,11 @@ export default function UploadForm({ user }: { user?: User | null }) {
                   ].maxVariations
                 }{" "}
                 per upload
+                {tier === "free" && !user && (
+                  <span className="text-xs text-red-500 ml-1">
+                    (2 as guest)
+                  </span>
+                )}
               </span>
             </div>
             <div className="flex flex-col">
@@ -1028,13 +1115,7 @@ export default function UploadForm({ user }: { user?: User | null }) {
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate{" "}
-                {
-                  subscriptionFeatures[
-                    tier as keyof typeof subscriptionFeatures
-                  ].maxVariations
-                }{" "}
-                Headshots
+                Generate {actualMaxVariations} Headshots
               </>
             )}
           </GradientButton>
@@ -1045,9 +1126,15 @@ export default function UploadForm({ user }: { user?: User | null }) {
             <Info className="h-4 w-4 flex-shrink-0" />
             <div>
               <span className="font-medium">Free Plan Limitations:</span> You
-              can generate {subscriptionFeatures.free.maxVariations} headshots
-              per upload, with {subscriptionFeatures.free.maxUploads} uploads
-              per month.
+              can generate {actualMaxVariations} headshots per upload, with{" "}
+              {actualMaxUploads} uploads per month.
+              {!user && (
+                <span className="font-medium text-green-600">
+                  {" "}
+                  Create a free account to get 4 headshots per upload and 10
+                  uploads per month!
+                </span>
+              )}
               <Link href="/pricing" className="ml-1 underline">
                 Upgrade
               </Link>{" "}

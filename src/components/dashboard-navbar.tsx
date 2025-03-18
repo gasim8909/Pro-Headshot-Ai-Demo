@@ -11,7 +11,8 @@ import {
 import { Button } from "./ui/button";
 import { UserCircle, Home, Camera, Settings, CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import UserAvatar from "./user-avatar";
 
 export default function DashboardNavbar() {
   const supabase = createClient();
@@ -67,8 +68,14 @@ export default function DashboardNavbar() {
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <UserCircle className="h-6 w-6" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full p-0 h-8 w-8 overflow-hidden"
+                >
+                  <Suspense fallback={<UserCircle className="h-6 w-6" />}>
+                    <UserAvatar />
+                  </Suspense>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

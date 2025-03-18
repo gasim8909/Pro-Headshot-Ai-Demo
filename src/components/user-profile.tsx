@@ -1,5 +1,4 @@
 "use client";
-import { UserCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -9,6 +8,7 @@ import {
 } from "./ui/dropdown-menu";
 import { createClient } from "../../supabase/client";
 import { useRouter } from "next/navigation";
+import UserAvatar from "./user-avatar";
 
 export default function UserProfile() {
   const supabase = createClient();
@@ -17,8 +17,12 @@ export default function UserProfile() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon">
-          <UserCircle className="h-6 w-6" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full p-0 h-8 w-8 overflow-hidden"
+        >
+          <UserAvatar />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
